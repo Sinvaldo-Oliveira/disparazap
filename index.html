@@ -1,0 +1,1509 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DisparaZap — Disparador WhatsApp</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>">
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
+<style>
+  :root {
+    --green: #25d366;
+    --green-dark: #128c7e;
+    --teal: #075e54;
+    --teal-deep: #04403a;
+    --bg: #eef3f1;
+    --card: #ffffff;
+    --text: #172421;
+    --muted: #6a7a75;
+    --border: #dbe4e1;
+    --danger: #e5484d;
+    --radius: 14px;
+    --shadow: 0 1px 2px rgba(7, 94, 84, .06), 0 8px 24px rgba(7, 94, 84, .08);
+    --mono: ui-monospace, "Cascadia Code", Consolas, "Courier New", monospace;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  .hidden { display: none !important; }
+  .muted { color: var(--muted); }
+  small { font-size: 12.5px; }
+
+  /* ---------- Topo ---------- */
+  .topbar {
+    background: linear-gradient(135deg, var(--teal-deep), var(--teal) 55%, var(--green-dark));
+    color: #fff;
+    padding: 20px 0 68px;
+  }
+  .topbar-inner, .container { max-width: 980px; margin: 0 auto; padding: 0 20px; }
+  .topbar-inner { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand-logo {
+    width: 44px; height: 44px; border-radius: 13px;
+    background: var(--green); display: grid; place-items: center;
+    font-size: 22px; box-shadow: 0 6px 16px rgba(0, 0, 0, .22);
+  }
+  .brand h1 { font-size: 21px; margin: 0; letter-spacing: -.01em; }
+  .brand p { margin: 0; font-size: 13px; opacity: .78; }
+  .instance-chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: rgba(255, 255, 255, .12); border: 1px solid rgba(255, 255, 255, .22);
+    padding: 6px 14px; border-radius: 999px; font-size: 13px; font-weight: 600;
+  }
+
+  .container { margin-top: -46px; margin-bottom: 40px; }
+
+  /* ---------- Stepper ---------- */
+  .stepper {
+    position: relative; display: grid; grid-template-columns: repeat(5, 1fr);
+    background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 20px 8px 16px; margin-bottom: 18px;
+  }
+  .stepper-track {
+    position: absolute; top: 38px; left: 10%; right: 10%; height: 4px;
+    background: var(--border); border-radius: 2px;
+  }
+  .stepper-fill {
+    height: 100%; width: 0; border-radius: 2px;
+    background: linear-gradient(90deg, var(--green-dark), var(--green));
+    transition: width .55s cubic-bezier(.4, 0, .2, 1);
+  }
+  .step-item {
+    position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 8px;
+    background: none; border: 0; padding: 0; font: inherit; color: var(--muted); cursor: pointer;
+  }
+  .step-item:disabled { cursor: not-allowed; }
+  .step-circle {
+    width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+    background: var(--card); border: 3px solid var(--border); font-weight: 700;
+    transition: all .35s ease;
+  }
+  .step-item:hover:not(:disabled) .step-circle { border-color: var(--green); }
+  .step-item.active .step-circle {
+    border-color: var(--green); color: var(--teal); transform: scale(1.08);
+    box-shadow: 0 0 0 6px rgba(37, 211, 102, .18);
+  }
+  .step-item.done .step-circle { background: var(--green); border-color: var(--green); color: #fff; }
+  .step-label { font-size: 13px; font-weight: 600; }
+  .step-item.active .step-label { color: var(--text); }
+  .step-item:focus-visible { outline: none; }
+  .step-item:focus-visible .step-circle { box-shadow: 0 0 0 4px rgba(37, 211, 102, .45); }
+
+  /* ---------- Cards / etapas ---------- */
+  .card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 28px; }
+  .step { display: none; }
+  .step.active { display: block; animation: stepIn .35s ease; }
+  @keyframes stepIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  .step-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 22px; }
+  .step-head h2 { margin: 0 0 4px; font-size: 20px; display: flex; align-items: center; gap: 8px; }
+  .step-head p { margin: 0; color: var(--muted); font-size: 14px; }
+
+  /* ---------- Campos ---------- */
+  .field { margin-bottom: 20px; }
+  .field > label, .label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+  .field-foot { display: flex; justify-content: space-between; gap: 10px; margin-top: 6px; color: var(--muted); }
+  input[type=text], input[type=password], input[type=number], input[type=tel], select, textarea {
+    width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 10px;
+    font: inherit; color: inherit; background: #fff;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  input:focus, select:focus, textarea:focus {
+    outline: none; border-color: var(--green); box-shadow: 0 0 0 3px rgba(37, 211, 102, .18);
+  }
+  textarea { resize: vertical; min-height: 130px; line-height: 1.5; }
+  .row { display: flex; gap: 10px; align-items: center; }
+  .grow { flex: 1; min-width: 0; }
+
+  /* ---------- Botões ---------- */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 10px 16px; border-radius: 10px; border: 1.5px solid var(--border);
+    background: #fff; color: var(--text); font: inherit; font-weight: 600;
+    cursor: pointer; white-space: nowrap; transition: all .15s ease;
+  }
+  .btn:hover:not(:disabled) { border-color: var(--green-dark); color: var(--teal); }
+  .btn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(37, 211, 102, .35); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn.primary { background: var(--green-dark); border-color: var(--green-dark); color: #fff; }
+  .btn.primary:hover:not(:disabled) { background: var(--teal); border-color: var(--teal); color: #fff; }
+  .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+  .btn.danger:hover:not(:disabled) { filter: brightness(.92); color: #fff; border-color: var(--danger); }
+  .btn.ghost { background: transparent; border-color: transparent; }
+  .btn.ghost:hover:not(:disabled) { background: var(--bg); border-color: transparent; }
+  .btn.danger-text { color: var(--danger); }
+  .btn.danger-text:hover:not(:disabled) { color: var(--danger); background: #fdecec; }
+  .btn.lg { padding: 14px 28px; font-size: 16px; }
+  .btn.sm { padding: 5px 10px; font-size: 13px; }
+  .icon-btn {
+    border: 0; background: transparent; cursor: pointer; font-size: 15px; line-height: 1;
+    padding: 7px; border-radius: 8px; color: var(--muted);
+  }
+  .icon-btn:hover { background: var(--bg); color: var(--text); }
+  .icon-btn.remove:hover { background: #fdecec; color: var(--danger); }
+
+  /* ---------- Status ---------- */
+  .status { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 13px; font-weight: 600; color: var(--muted); }
+  .status.on { color: var(--green-dark); }
+  .status.off, .status.err { color: var(--danger); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #b9c5c1; flex-shrink: 0; display: inline-block; }
+  .dot.on { background: var(--green); animation: pulse 2s infinite; }
+  .dot.off { background: var(--danger); }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(37, 211, 102, .55); }
+    70% { box-shadow: 0 0 0 8px rgba(37, 211, 102, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(37, 211, 102, 0); }
+  }
+
+  .input-wrap { position: relative; flex: 1; min-width: 0; }
+  .input-wrap input { padding-right: 44px; }
+  .input-wrap .icon-btn { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); }
+
+  /* ---------- Abas ---------- */
+  .tabs { display: inline-flex; background: var(--bg); padding: 4px; border-radius: 12px; margin-bottom: 18px; }
+  .tab {
+    border: 0; background: transparent; padding: 8px 18px; border-radius: 9px;
+    font: inherit; font-weight: 600; color: var(--muted); cursor: pointer;
+  }
+  .tab.active { background: #fff; color: var(--teal); box-shadow: 0 1px 4px rgba(0, 0, 0, .08); }
+  .manual-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; }
+
+  .dropzone {
+    border: 2px dashed var(--border); border-radius: var(--radius); padding: 34px 20px;
+    text-align: center; cursor: pointer; color: var(--muted); transition: all .2s;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+  }
+  .dropzone:hover, .dropzone.drag, .dropzone:focus-visible {
+    outline: none; border-color: var(--green); background: rgba(37, 211, 102, .06); color: var(--teal);
+  }
+  .dropzone strong { color: var(--text); }
+  .dz-icon { font-size: 34px; }
+
+  .excel-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+  .excel-file { font-weight: 600; }
+  .excel-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  .check { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; margin: 12px 0; }
+  .check input { width: 16px; height: 16px; accent-color: var(--green-dark); }
+
+  /* ---------- Tabelas ---------- */
+  .table-wrap { border: 1px solid var(--border); border-radius: 12px; overflow: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th {
+    background: #f5f9f8; font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--muted); position: sticky; top: 0; z-index: 1;
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr:hover td { background: #f8fbfa; }
+  .contacts-wrap { max-height: 340px; }
+  td.num { color: var(--muted); width: 56px; }
+  td.phone { font-family: var(--mono); font-size: 13.5px; }
+  td.actions-cell { width: 44px; text-align: right; padding: 4px 8px; }
+  th.col-phone, td.col-phone { background: rgba(37, 211, 102, .13) !important; }
+  th.col-name, td.col-name { background: rgba(18, 140, 126, .08) !important; }
+  .empty { padding: 30px; text-align: center; color: var(--muted); }
+
+  .list-head { display: flex; justify-content: space-between; align-items: center; margin: 26px 0 10px; }
+  .badge {
+    display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 22px;
+    padding: 0 8px; border-radius: 999px; background: var(--green-dark); color: #fff;
+    font-size: 12px; font-weight: 700;
+  }
+  .chip {
+    border: 1.5px solid var(--border); background: #fff; color: var(--teal); border-radius: 999px;
+    padding: 2px 10px; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  }
+  .chip:hover { border-color: var(--green); background: rgba(37, 211, 102, .08); }
+  .label-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .label-row label { font-weight: 600; font-size: 13px; }
+  .tag-a { font-size: 11px; font-weight: 700; color: var(--green-dark); background: rgba(37, 211, 102, .12); padding: 1px 8px; border-radius: 999px; margin-left: 6px; }
+
+  /* ---------- Pré-visualização (display:none na classe; JS usa 'block') ---------- */
+  .preview-box {
+    display: none; margin-top: 16px; padding: 16px; border-radius: 12px;
+    background-color: #efe7dd;
+    background-image: radial-gradient(rgba(7, 94, 84, .06) 1px, transparent 1px);
+    background-size: 14px 14px;
+  }
+  .preview-meta { display: block; font-size: 12px; color: #5c6b66; margin-bottom: 10px; text-align: center; }
+  .bubble {
+    position: relative; width: fit-content; max-width: 85%; margin: 0 0 10px auto;
+    background: #d9fdd3; padding: 7px 12px 20px; border-radius: 10px 0 10px 10px;
+    box-shadow: 0 1px 1px rgba(0, 0, 0, .12); white-space: pre-wrap; overflow-wrap: anywhere;
+    min-width: 120px;
+  }
+  .bubble:last-child { margin-bottom: 0; }
+  .bubble .tag { display: block; font-size: 11px; font-weight: 700; color: var(--green-dark); margin-bottom: 2px; }
+  .bubble .time { position: absolute; right: 8px; bottom: 3px; font-size: 11px; color: #667781; }
+
+  /* ---------- Toggle A/B ---------- */
+  .ab-box { display: flex; gap: 14px; align-items: flex-start; padding: 16px; border: 1.5px solid var(--border); border-radius: 12px; margin-top: 24px; }
+  .ab-box strong { display: block; }
+  .switch { position: relative; width: 46px; height: 26px; flex-shrink: 0; display: inline-block; margin-top: 2px; }
+  .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .slider { position: absolute; inset: 0; background: #c6d1cd; border-radius: 999px; transition: .2s; cursor: pointer; }
+  .slider::before {
+    content: ""; position: absolute; width: 20px; height: 20px; left: 3px; top: 3px;
+    background: #fff; border-radius: 50%; transition: .2s; box-shadow: 0 1px 3px rgba(0, 0, 0, .2);
+  }
+  .switch input:checked + .slider { background: var(--green); }
+  .switch input:checked + .slider::before { transform: translateX(20px); }
+  .switch input:focus-visible + .slider { box-shadow: 0 0 0 3px rgba(37, 211, 102, .4); }
+  .ab-panel { margin-top: 6px; }
+  .variation { margin-top: 16px; animation: stepIn .25s ease; }
+  .variation textarea { min-height: 96px; }
+
+  /* ---------- Banners ---------- */
+  .banner { padding: 12px 14px; border-radius: 10px; font-size: 14px; margin-top: 14px; }
+  .banner.warn { background: #fff7d6; border: 1px solid #f0d26a; color: #745600; }
+  .banner.error { background: #fdecec; border: 1px solid #f3b4b4; color: #a12828; }
+  .banner.info { background: #e8f6f3; border: 1px solid #b5e0d6; color: var(--teal); }
+
+  /* ---------- Delay ---------- */
+  .delay-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .input-suffix { position: relative; }
+  .input-suffix input { padding-right: 70px; }
+  .input-suffix span { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 13px; pointer-events: none; }
+  .delay-preview {
+    display: flex; align-items: center; gap: 12px; padding: 16px 18px; border-radius: 12px;
+    background: var(--bg); font-size: 15px;
+  }
+  .delay-preview .ico { font-size: 24px; }
+  .delay-preview strong { color: var(--teal); }
+
+  /* ---------- Disparo ---------- */
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .tile { background: var(--bg); border-radius: 12px; padding: 14px 16px; min-width: 0; }
+  .tile small { display: block; color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+  .tile strong { display: flex; align-items: center; gap: 8px; font-size: 20px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tile.ok strong { color: var(--green-dark); }
+  .tile.err strong { color: var(--danger); }
+  .run-actions { display: flex; gap: 12px; justify-content: center; margin: 24px 0; flex-wrap: wrap; }
+
+  .progress-info { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 14px; margin-bottom: 8px; }
+  .progress-info .count { font-weight: 700; font-size: 16px; font-variant-numeric: tabular-nums; }
+  .progress-info .run-status { color: var(--muted); flex: 1; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .progress-info .pct { font-weight: 700; color: var(--teal); font-variant-numeric: tabular-nums; }
+  .progress { height: 14px; background: var(--bg); border-radius: 999px; overflow: hidden; }
+  .progress-bar {
+    position: relative; height: 100%; width: 0; overflow: hidden; border-radius: 999px;
+    background: linear-gradient(90deg, var(--green-dark), var(--green));
+    transition: width .4s ease;
+  }
+  .progress-bar.running::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .4), transparent);
+    animation: shine 1.4s infinite;
+  }
+  @keyframes shine { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+  .log-head { display: flex; justify-content: space-between; align-items: center; margin: 24px 0 8px; }
+  .log-legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); }
+  .log {
+    background: #0f1c19; color: #d3e0dc; border-radius: 12px; height: 290px; overflow-y: auto;
+    padding: 12px 14px; font-family: var(--mono); font-size: 13px; line-height: 1.65;
+  }
+  .log:empty::before { content: "Os eventos do disparo aparecerão aqui."; color: #5f7a73; }
+  .log-line { display: flex; gap: 10px; }
+  .log-time { color: #5f7a73; flex-shrink: 0; }
+  .log-icon { flex-shrink: 0; width: 14px; text-align: center; font-weight: 700; }
+  .log-msg { overflow-wrap: anywhere; }
+  .log-line.ok .log-icon { color: #3ddc84; }
+  .log-line.err .log-icon, .log-err { color: #ff7b7b; }
+  .log-line.sys .log-icon, .log-line.sys .log-msg { color: #f5c542; }
+
+  .post-summary { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border); }
+  .post-summary h3 { margin: 0 0 14px; font-size: 17px; }
+  .post-actions { display: flex; justify-content: center; margin-top: 20px; }
+
+  /* ---------- Navegação ---------- */
+  .wizard-nav { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 18px; }
+  .step-indicator { color: var(--muted); font-size: 13px; }
+  .footer-note { text-align: center; color: var(--muted); font-size: 12.5px; margin-top: 26px; }
+
+  /* ---------- Toasts ---------- */
+  #toasts { position: fixed; right: 20px; bottom: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 100; }
+  .toast {
+    background: #1b2a26; color: #fff; padding: 12px 16px; border-radius: 10px; font-size: 14px;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, .22); max-width: 380px;
+    border-left: 4px solid var(--green); animation: toastIn .25s ease;
+  }
+  .toast.error { border-left-color: var(--danger); }
+  .toast.warn { border-left-color: #f5c542; }
+  .toast.out { opacity: 0; transform: translateY(6px); transition: all .25s; }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+  @media (max-width: 720px) {
+    .card { padding: 20px; }
+    .tiles { grid-template-columns: repeat(2, 1fr); }
+    .manual-grid, .excel-cols, .delay-grid { grid-template-columns: 1fr; }
+    .step-label { display: none; }
+    .stepper { padding-bottom: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="brand-logo" aria-hidden="true">💬</div>
+      <div>
+        <h1>DisparaZap</h1>
+        <p>Disparos em massa no WhatsApp · Evolution Go</p>
+      </div>
+    </div>
+    <div class="instance-chip" title="Instância selecionada">
+      <span class="dot" id="headerDot"></span>
+      <span id="headerInstanceName">Nenhuma instância</span>
+    </div>
+  </div>
+</header>
+
+<main class="container">
+  <nav class="stepper" aria-label="Etapas">
+    <div class="stepper-track"><div class="stepper-fill" id="stepperFill"></div></div>
+    <button type="button" class="step-item" data-step="1"><span class="step-circle">1</span><span class="step-label">Instância</span></button>
+    <button type="button" class="step-item" data-step="2"><span class="step-circle">2</span><span class="step-label">Contatos</span></button>
+    <button type="button" class="step-item" data-step="3"><span class="step-circle">3</span><span class="step-label">Mensagem</span></button>
+    <button type="button" class="step-item" data-step="4"><span class="step-circle">4</span><span class="step-label">Delay</span></button>
+    <button type="button" class="step-item" data-step="5"><span class="step-circle">5</span><span class="step-label">Disparar</span></button>
+  </nav>
+
+  <!-- ================= Etapa 1 — Instância ================= -->
+  <section class="card step" data-step="1">
+    <div class="step-head">
+      <div>
+        <h2>Instância</h2>
+        <p>Escolha a instância do WhatsApp que vai enviar as mensagens e informe o token dela.</p>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="instanceSelect">Instância</label>
+      <div class="row">
+        <select id="instanceSelect" class="grow">
+          <option value="">— clique em Carregar —</option>
+        </select>
+        <button type="button" class="btn" id="btnLoadInstances">↺ Carregar</button>
+      </div>
+      <div class="status" id="instanceStatus">
+        <span class="dot"></span><span id="instanceStatusText">Clique em ↺ Carregar para buscar as instâncias</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="tokenInput">Token da Instância</label>
+      <div class="row">
+        <div class="input-wrap">
+          <input type="password" id="tokenInput" autocomplete="off" spellcheck="false" placeholder="Token definido ao criar a instância">
+          <button type="button" class="icon-btn" id="btnToggleToken" title="Mostrar/ocultar token" aria-label="Mostrar ou ocultar token">👁</button>
+        </div>
+        <button type="button" class="btn" id="btnSaveToken" title="Salvar token neste navegador" aria-label="Salvar token">💾</button>
+      </div>
+      <div class="field-foot">
+        <small>É o valor do campo <code>"token"</code> usado no <code>POST /instance/create</code>. Fica salvo só neste navegador.</small>
+        <small id="tokenHint"></small>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= Etapa 2 — Contatos ================= -->
+  <section class="card step" data-step="2">
+    <div class="step-head">
+      <div>
+        <h2>Contatos <span class="badge" id="contactCount">0</span></h2>
+        <p>Adicione os contatos manualmente ou importe uma planilha Excel.</p>
+      </div>
+    </div>
+
+    <div class="tabs" role="tablist">
+      <button type="button" class="tab active" data-tab="manual" role="tab">✍ Manual</button>
+      <button type="button" class="tab" data-tab="excel" role="tab">📊 Excel</button>
+    </div>
+
+    <div id="tab-manual" class="tab-panel">
+      <div class="manual-grid">
+        <input type="text" id="contactName" placeholder="Nome" aria-label="Nome do contato">
+        <input type="tel" id="contactPhone" placeholder="Telefone com DDI — ex: 5511999999999" aria-label="Telefone com DDI" inputmode="numeric">
+        <button type="button" class="btn primary" id="btnAddContact">+ Adicionar</button>
+      </div>
+      <small class="muted">Informe DDI + DDD + número (mínimo 10 dígitos). Pressione Enter no telefone para adicionar.</small>
+    </div>
+
+    <div id="tab-excel" class="tab-panel hidden">
+      <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Escolher planilha Excel">
+        <div class="dz-icon">📄</div>
+        <strong>Arraste a planilha aqui</strong>
+        <span>ou clique para escolher um arquivo .xlsx ou .xls</span>
+      </div>
+      <input type="file" id="fileInput" accept=".xlsx,.xls" hidden>
+
+      <div id="excelConfig" class="hidden">
+        <div class="excel-head">
+          <div><span class="excel-file" id="excelFileName"></span> · <span class="muted" id="excelRowCount"></span></div>
+          <button type="button" class="btn ghost sm" id="btnCancelImport">✕ Trocar arquivo</button>
+        </div>
+        <div class="excel-cols">
+          <div>
+            <label class="label" for="colPhone">📱 Coluna do telefone</label>
+            <select id="colPhone"></select>
+          </div>
+          <div>
+            <label class="label" for="colName">👤 Coluna do nome</label>
+            <select id="colName"></select>
+          </div>
+        </div>
+        <label class="check"><input type="checkbox" id="hasHeader"> Primeira linha é cabeçalho</label>
+        <div class="label">Pré-visualização (primeiras 6 linhas)</div>
+        <div class="table-wrap"><table id="excelPreview"></table></div>
+        <div class="row" style="justify-content: space-between; margin-top: 14px;">
+          <small class="muted" id="excelValidHint"></small>
+          <button type="button" class="btn primary" id="btnImport">Importar contatos</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="list-head">
+      <strong>Lista de contatos</strong>
+      <button type="button" class="btn ghost sm danger-text" id="btnClearContacts">🗑 Limpar</button>
+    </div>
+    <div class="table-wrap contacts-wrap">
+      <table id="contactsTable">
+        <thead><tr><th>#</th><th>Nome</th><th>Telefone</th><th></th></tr></thead>
+        <tbody id="contactsBody"></tbody>
+      </table>
+      <div class="empty" id="contactsEmpty">Nenhum contato adicionado ainda.</div>
+    </div>
+  </section>
+
+  <!-- ================= Etapa 3 — Mensagem ================= -->
+  <section class="card step" data-step="3">
+    <div class="step-head">
+      <div>
+        <h2>Mensagem</h2>
+        <p>Escreva o texto que será enviado. Use <code>{nome}</code> para personalizar com o nome do contato.</p>
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="label-row">
+        <label for="messageInput">Mensagem principal<span class="tag-a hidden" id="mainVariationTag">Variação A</span></label>
+        <button type="button" class="chip" id="btnInsertNome" title="Inserir {nome} no cursor">+ {nome}</button>
+      </div>
+      <textarea id="messageInput" placeholder="Olá {nome}! Tudo bem? Temos uma novidade para você…"></textarea>
+      <div class="field-foot">
+        <small>Formatação do WhatsApp: *negrito*, _itálico_, ~riscado~</small>
+        <small id="charCount">0 caracteres</small>
+      </div>
+    </div>
+
+    <button type="button" class="btn" id="btnPreview">👁 Pré-visualizar</button>
+    <div class="preview-box" id="previewBox">
+      <small class="preview-meta" id="previewMeta"></small>
+      <div id="previewBubbles"></div>
+    </div>
+
+    <div class="ab-box">
+      <label class="switch">
+        <input type="checkbox" id="abToggle" aria-label="Ativar variações de mensagem">
+        <span class="slider"></span>
+      </label>
+      <div class="grow">
+        <strong>Variações de mensagem (Teste A/B)</strong>
+        <small class="muted">A cada envio o sistema sorteia uma variação — a mensagem principal é a variação A. Cada variação aceita <code>{nome}</code>.</small>
+        <div id="abPanel" class="ab-panel hidden">
+          <div id="variationsList"></div>
+          <button type="button" class="btn ghost sm" id="btnAddVariation" style="margin-top: 12px;">+ Adicionar variação</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= Etapa 4 — Delay ================= -->
+  <section class="card step" data-step="4">
+    <div class="step-head">
+      <div>
+        <h2>Intervalo entre envios</h2>
+        <p>Um tempo aleatório entre o mínimo e o máximo é aguardado entre cada mensagem.</p>
+      </div>
+    </div>
+
+    <div class="delay-grid">
+      <div class="field">
+        <label for="delayMin">Tempo mínimo</label>
+        <div class="input-suffix"><input type="number" id="delayMin" min="1" step="1" value="10"><span>segundos</span></div>
+      </div>
+      <div class="field">
+        <label for="delayMax">Tempo máximo</label>
+        <div class="input-suffix"><input type="number" id="delayMax" min="1" step="1" value="20"><span>segundos</span></div>
+      </div>
+    </div>
+
+    <div class="delay-preview">
+      <span class="ico" aria-hidden="true">⏱</span>
+      <div>
+        <div id="delayPreview"></div>
+        <small class="muted" id="delayEstimate"></small>
+      </div>
+    </div>
+    <div class="banner warn hidden" id="delayWarn">⚠ Intervalos menores que 5 segundos aumentam muito o risco de banimento do número.</div>
+    <div class="banner error hidden" id="delayError"></div>
+  </section>
+
+  <!-- ================= Etapa 5 — Disparar ================= -->
+  <section class="card step" data-step="5">
+    <div class="step-head">
+      <div>
+        <h2>Disparar</h2>
+        <p>Confira o resumo e inicie. Você pode parar a qualquer momento.</p>
+      </div>
+    </div>
+
+    <div class="tiles">
+      <div class="tile"><small>Instância</small><strong id="preInstance">—</strong></div>
+      <div class="tile"><small>Contatos</small><strong id="preContacts">0</strong></div>
+      <div class="tile"><small>Intervalo</small><strong id="preDelay">—</strong></div>
+      <div class="tile"><small>Mensagens</small><strong id="preMessages">—</strong></div>
+    </div>
+
+    <div class="run-actions">
+      <button type="button" class="btn primary lg" id="btnStart">▶ Iniciar Disparo</button>
+      <button type="button" class="btn danger lg" id="btnStop" disabled>⏹ Parar</button>
+    </div>
+
+    <div class="progress-info">
+      <span class="count" id="progressText">0 / 0</span>
+      <span class="run-status" id="runStatus"></span>
+      <span class="pct" id="progressPct">0%</span>
+    </div>
+    <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progressTrack">
+      <div class="progress-bar" id="progressBar"></div>
+    </div>
+
+    <div class="log-head">
+      <strong>Log</strong>
+      <div class="log-legend"><span style="color:#1f9d55">✓ enviado</span><span style="color:var(--danger)">✗ erro</span><span style="color:#b08800">◆ sistema</span></div>
+    </div>
+    <div class="log" id="logPanel" aria-live="polite"></div>
+
+    <div class="post-summary hidden" id="postSummary">
+      <h3>Resumo do disparo</h3>
+      <div class="tiles">
+        <div class="tile ok"><small>Enviados</small><strong id="sumSent">0</strong></div>
+        <div class="tile err"><small>Erros</small><strong id="sumErrors">0</strong></div>
+        <div class="tile"><small>Tempo total</small><strong id="sumTime">00:00</strong></div>
+        <div class="tile"><small>Delay médio</small><strong id="sumDelay">—</strong></div>
+      </div>
+      <div class="banner hidden" id="stoppedWarn"></div>
+      <div class="post-actions">
+        <button type="button" class="btn primary" id="btnNewCampaign">🚀 Iniciar Novo Disparo</button>
+      </div>
+    </div>
+  </section>
+
+  <div class="wizard-nav">
+    <button type="button" class="btn" id="btnBack">← Voltar</button>
+    <span class="step-indicator" id="stepIndicator"></span>
+    <button type="button" class="btn primary" id="btnNext">Próximo →</button>
+  </div>
+
+  <p class="footer-note">Use com responsabilidade: envie apenas para quem autorizou receber suas mensagens.</p>
+</main>
+
+<div id="toasts" aria-live="polite"></div>
+
+<script>
+(() => {
+  'use strict';
+
+  const STEP_COUNT = 5;
+  const MAX_LOG = 500;
+  const PHONE_HEADER_RE = /(telefone|celular|fone|phone|whats|zap|n[uú]mero|mobile|^tel\b|^cel\b)/i;
+  const NAME_HEADER_RE = /(nome|name|cliente|contato|raz[aã]o)/i;
+
+  const $ = (id) => document.getElementById(id);
+
+  const state = {
+    step: 1,
+    instances: [],
+    currentInstance: '',
+    ackDisconnected: '',
+    contacts: [],
+    excel: null,
+    running: false,
+    stopRequested: false,
+    autoScroll: true,
+    lastTextarea: null,
+    variationSeq: 0,
+  };
+
+  // ================= Utilitários =================
+  function esc(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (c) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+  }
+
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const randInt = (min, max) => Math.floor(min + Math.random() * (max - min + 1));
+  const letter = (i) => String.fromCharCode(65 + i);
+
+  function normalizePhone(raw) {
+    const digits = String(raw ?? '').replace(/\D/g, '');
+    return digits.length >= 10 && digits.length <= 15 ? digits : null;
+  }
+
+  // Números grandes do Excel viram string sem notação científica
+  function cellToString(value) {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'number') return Number.isInteger(value) ? value.toFixed(0) : String(value);
+    return String(value).trim();
+  }
+
+  function contactLabel(c) {
+    return c.name ? `${c.name} (${c.phone})` : c.phone;
+  }
+
+  function fmtSec(v) {
+    return `${Number.isInteger(v) ? v : v.toFixed(1)}s`;
+  }
+
+  function formatDuration(ms) {
+    const total = Math.round(ms / 1000);
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    const pad = (n) => String(n).padStart(2, '0');
+    return h ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+  }
+
+  function humanDuration(ms) {
+    const s = Math.round(ms / 1000);
+    if (s < 60) return `${s} segundos`;
+    const m = Math.round(s / 60);
+    if (m < 60) return `${m} min`;
+    return `${Math.floor(m / 60)} h ${m % 60} min`;
+  }
+
+  function toast(message, type = 'ok', ms = 3500) {
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    el.textContent = message;
+    $('toasts').appendChild(el);
+    setTimeout(() => {
+      el.classList.add('out');
+      setTimeout(() => el.remove(), 260);
+    }, ms);
+  }
+
+  function errorMessage(data) {
+    if (!data) return '';
+    if (typeof data === 'string') return data;
+    const inner = data.data && typeof data.data === 'object' ? (data.data.error || data.data.message) : '';
+    return data.error || inner || data.message || '';
+  }
+
+  async function api(path, { method = 'GET', headers = {}, body } = {}) {
+    const opts = { method, headers: { ...headers } };
+    if (body !== undefined) {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(body);
+    }
+    let res;
+    try {
+      res = await fetch(path, opts);
+    } catch {
+      const err = new Error('Servidor local indisponível — o "node server.js" está rodando?');
+      err.status = 0;
+      throw err;
+    }
+    let data = null;
+    try { data = await res.json(); } catch { /* resposta sem JSON */ }
+    if (!res.ok) {
+      const err = new Error(errorMessage(data) || `HTTP ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  }
+
+  // ================= Log =================
+  function log(type, message, detail) {
+    const icons = { ok: '✓', err: '✗', sys: '◆' };
+    const time = new Date().toLocaleTimeString('pt-BR');
+    const panel = $('logPanel');
+    const line = document.createElement('div');
+    line.className = `log-line ${type}`;
+    line.innerHTML =
+      `<span class="log-time">${time}</span>` +
+      `<span class="log-icon">${icons[type]}</span>` +
+      `<span class="log-msg">${esc(message)}${detail ? ` — <span class="log-err">${esc(detail)}</span>` : ''}</span>`;
+    panel.appendChild(line);
+    while (panel.childElementCount > MAX_LOG) panel.firstElementChild.remove();
+    if (state.autoScroll) panel.scrollTop = panel.scrollHeight;
+  }
+
+  // ================= Etapa 1 — Instância =================
+  function instanceName(inst) {
+    return inst ? String(inst.name || inst.instanceName || inst.id || '') : '';
+  }
+
+  // /instance/all retorna "connected" booleano; connectionStatus/status ficam como fallback
+  function isConnected(inst) {
+    if (!inst) return false;
+    if (inst.connected === true) return true;
+    const st = String(inst.connectionStatus || inst.status || '').toLowerCase();
+    return st === 'open' || st === 'connected';
+  }
+
+  function selectedInstance() {
+    const name = $('instanceSelect').value;
+    return state.instances.find((i) => instanceName(i) === name) || null;
+  }
+
+  async function loadInstances(silent = false) {
+    const btn = $('btnLoadInstances');
+    btn.disabled = true;
+    btn.textContent = '↻ Carregando…';
+    try {
+      const data = await api('/api/instances');
+      const list = Array.isArray(data) ? data : (data && Array.isArray(data.data) ? data.data : []);
+      state.instances = list.filter((i) => instanceName(i));
+      renderInstanceOptions();
+      if (!state.instances.length) setInstanceStatus('err', 'Nenhuma instância encontrada no servidor');
+      else if (!silent) toast(`${state.instances.length} instância(s) carregada(s)`);
+    } catch (e) {
+      setInstanceStatus('err', `Erro ao carregar: ${e.message}`);
+      if (!silent) toast(e.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '↺ Carregar';
+    }
+  }
+
+  function renderInstanceOptions() {
+    const sel = $('instanceSelect');
+    const previous = sel.value || localStorage.getItem('lastInstance') || '';
+    sel.innerHTML = '<option value="">— selecione —</option>' + state.instances.map((inst) => {
+      const name = instanceName(inst);
+      return `<option value="${esc(name)}">${isConnected(inst) ? '🟢' : '🔴'} ${esc(name)}</option>`;
+    }).join('');
+    if (state.instances.some((i) => instanceName(i) === previous)) sel.value = previous;
+    onInstanceChange();
+  }
+
+  function setInstanceStatus(kind, text) {
+    $('instanceStatus').className = `status ${kind}`;
+    $('instanceStatus').querySelector('.dot').className = `dot ${kind === 'on' ? 'on' : kind ? 'off' : ''}`;
+    $('instanceStatusText').textContent = text;
+  }
+
+  function onInstanceChange() {
+    const inst = selectedInstance();
+    const name = instanceName(inst);
+
+    if (name !== state.currentInstance) {
+      state.currentInstance = name;
+      $('tokenInput').value = name ? (localStorage.getItem(`token:${name}`) || '') : '';
+      if (name) localStorage.setItem('lastInstance', name);
+    }
+
+    if (!inst) setInstanceStatus('', state.instances.length ? 'Nenhuma instância selecionada' : 'Clique em ↺ Carregar para buscar as instâncias');
+    else if (isConnected(inst)) setInstanceStatus('on', 'Conectado');
+    else setInstanceStatus('off', 'Desconectado');
+
+    $('headerDot').className = `dot ${inst ? (isConnected(inst) ? 'on' : 'off') : ''}`;
+    $('headerInstanceName').textContent = name || 'Nenhuma instância';
+    updateTokenHint();
+  }
+
+  function updateTokenHint() {
+    const name = state.currentInstance;
+    const value = $('tokenInput').value.trim();
+    const saved = name ? localStorage.getItem(`token:${name}`) : null;
+    $('tokenHint').textContent = value && saved === value ? '✓ token salvo' : (value ? 'não salvo' : '');
+  }
+
+  function saveToken() {
+    const name = state.currentInstance;
+    if (!name) { toast('Selecione uma instância primeiro', 'warn'); return; }
+    const value = $('tokenInput').value.trim();
+    if (value) {
+      localStorage.setItem(`token:${name}`, value);
+      toast(`Token salvo para "${name}"`);
+    } else {
+      localStorage.removeItem(`token:${name}`);
+      toast(`Token removido de "${name}"`, 'warn');
+    }
+    updateTokenHint();
+  }
+
+  // ================= Etapa 2 — Contatos =================
+  function renderContacts() {
+    const n = state.contacts.length;
+    $('contactCount').textContent = n;
+    $('contactsTable').classList.toggle('hidden', n === 0);
+    $('contactsEmpty').classList.toggle('hidden', n > 0);
+    $('btnClearContacts').disabled = n === 0 || state.running;
+    $('contactsBody').innerHTML = state.contacts.map((c, i) => (
+      `<tr>` +
+      `<td class="num">${i + 1}</td>` +
+      `<td>${c.name ? esc(c.name) : '<span class="muted">—</span>'}</td>` +
+      `<td class="phone">${esc(c.phone)}</td>` +
+      `<td class="actions-cell"><button type="button" class="icon-btn remove" data-index="${i}" title="Remover" aria-label="Remover ${esc(contactLabel(c))}">✕</button></td>` +
+      `</tr>`
+    )).join('');
+    updateDelayUI();
+  }
+
+  function addManualContact() {
+    const name = $('contactName').value.trim();
+    const phone = normalizePhone($('contactPhone').value);
+    if (!phone) {
+      toast('Telefone inválido — use DDI + DDD + número (ex: 5511999999999)', 'error');
+      $('contactPhone').focus();
+      return;
+    }
+    if (state.contacts.some((c) => c.phone === phone)) {
+      toast('Este número já está na lista', 'warn');
+      $('contactPhone').focus();
+      return;
+    }
+    state.contacts.push({ name, phone });
+    renderContacts();
+    $('contactName').value = '';
+    $('contactPhone').value = '';
+    $('contactName').focus();
+  }
+
+  function clearContacts() {
+    const n = state.contacts.length;
+    if (!n || state.running) return;
+    if (!confirm(`Remover todos os ${n} contato(s) da lista?`)) return;
+    state.contacts = [];
+    renderContacts();
+    toast('Lista de contatos limpa', 'warn');
+  }
+
+  function switchTab(tab) {
+    document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+    $('tab-manual').classList.toggle('hidden', tab !== 'manual');
+    $('tab-excel').classList.toggle('hidden', tab !== 'excel');
+  }
+
+  // ----- Excel -----
+  function handleFile(file) {
+    if (!file) return;
+    if (!/\.(xlsx|xls)$/i.test(file.name)) {
+      toast('Formato inválido — use um arquivo .xlsx ou .xls', 'error');
+      return;
+    }
+    if (typeof XLSX === 'undefined') {
+      toast('A biblioteca de Excel não carregou — verifique sua conexão com a internet', 'error');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '', blankrows: false });
+        if (!rows.length) {
+          toast('A planilha está vazia', 'warn');
+          return;
+        }
+        const ncols = rows.reduce((max, r) => Math.max(max, r.length), 0);
+        state.excel = { fileName: file.name, rows, ncols, hasHeader: detectHeader(rows), colPhone: -1, colName: -1 };
+        detectColumns();
+        renderExcel();
+      } catch (err) {
+        toast(`Não foi possível ler a planilha: ${err.message}`, 'error');
+      }
+    };
+    reader.onerror = () => toast('Erro ao ler o arquivo', 'error');
+    reader.readAsArrayBuffer(file);
+  }
+
+  // Se a 1ª linha já tem um telefone válido, ela é dado — senão é cabeçalho
+  function detectHeader(rows) {
+    return !(rows[0] || []).some((c) => normalizePhone(cellToString(c)));
+  }
+
+  function detectColumns() {
+    const ex = state.excel;
+    const start = ex.hasHeader ? 1 : 0;
+    const header = ex.hasHeader ? Array.from({ length: ex.ncols }, (_, c) => cellToString(ex.rows[0][c])) : [];
+    const sample = ex.rows.slice(start, start + 50);
+
+    let phone = header.findIndex((h) => PHONE_HEADER_RE.test(h));
+    let name = header.findIndex((h, i) => i !== phone && NAME_HEADER_RE.test(h));
+
+    if (phone < 0) {
+      let best = 0;
+      for (let c = 0; c < ex.ncols; c++) {
+        const score = sample.filter((r) => normalizePhone(cellToString(r[c]))).length;
+        if (score > best) { best = score; phone = c; }
+      }
+    }
+    if (name < 0) {
+      for (let c = 0; c < ex.ncols; c++) {
+        if (c === phone) continue;
+        if (sample.some((r) => /[a-zà-ú]/i.test(cellToString(r[c])))) { name = c; break; }
+      }
+    }
+    ex.colPhone = phone;
+    ex.colName = name;
+  }
+
+  function columnLabel(c) {
+    const ex = state.excel;
+    const col = XLSX.utils.encode_col(c);
+    const title = ex.hasHeader ? cellToString(ex.rows[0][c]) : '';
+    return title ? `${col} · ${title}` : `Coluna ${col}`;
+  }
+
+  function renderExcel() {
+    const ex = state.excel;
+    $('dropzone').classList.add('hidden');
+    $('excelConfig').classList.remove('hidden');
+    $('excelFileName').textContent = ex.fileName;
+    $('excelRowCount').textContent = `${ex.rows.length - (ex.hasHeader ? 1 : 0)} linha(s) de dados`;
+    $('hasHeader').checked = ex.hasHeader;
+
+    const options = Array.from({ length: ex.ncols }, (_, c) => `<option value="${c}">${esc(columnLabel(c))}</option>`).join('');
+    $('colPhone').innerHTML = '<option value="-1">— selecione —</option>' + options;
+    $('colName').innerHTML = '<option value="-1">— sem nome —</option>' + options;
+    $('colPhone').value = String(ex.colPhone);
+    $('colName').value = String(ex.colName);
+    renderExcelPreview();
+  }
+
+  function renderExcelPreview() {
+    const ex = state.excel;
+    const start = ex.hasHeader ? 1 : 0;
+    const cls = (c) => (c === ex.colPhone ? 'col-phone' : c === ex.colName ? 'col-name' : '');
+    const cols = Array.from({ length: ex.ncols }, (_, c) => c);
+
+    const head = cols.map((c) => `<th class="${cls(c)}">${esc(columnLabel(c))}</th>`).join('');
+    const body = ex.rows.slice(start, start + 6).map((r) => (
+      '<tr>' + cols.map((c) => `<td class="${cls(c)}">${esc(cellToString(r[c]))}</td>`).join('') + '</tr>'
+    )).join('');
+    $('excelPreview').innerHTML =
+      `<thead><tr>${head}</tr></thead>` +
+      `<tbody>${body || `<tr><td colspan="${ex.ncols || 1}" class="empty">Sem linhas de dados</td></tr>`}</tbody>`;
+
+    if (ex.colPhone < 0) {
+      $('excelValidHint').textContent = 'Selecione a coluna do telefone';
+    } else {
+      const dataRows = ex.rows.slice(start);
+      const valid = dataRows.filter((r) => normalizePhone(cellToString(r[ex.colPhone]))).length;
+      $('excelValidHint').textContent = `${valid} de ${dataRows.length} linha(s) com telefone válido`;
+    }
+    $('btnImport').disabled = ex.colPhone < 0;
+  }
+
+  function importExcel() {
+    const ex = state.excel;
+    if (!ex || ex.colPhone < 0) return;
+    const existing = new Set(state.contacts.map((c) => c.phone));
+    let added = 0, ignored = 0, duplicated = 0;
+
+    for (const row of ex.rows.slice(ex.hasHeader ? 1 : 0)) {
+      const phone = normalizePhone(cellToString(row[ex.colPhone]));
+      if (!phone) { ignored++; continue; }
+      if (existing.has(phone)) { duplicated++; continue; }
+      existing.add(phone);
+      state.contacts.push({ name: ex.colName >= 0 ? cellToString(row[ex.colName]) : '', phone });
+      added++;
+    }
+
+    renderContacts();
+    log('sys', `Importação de "${ex.fileName}": ${added} contato(s) adicionado(s), ${ignored} linha(s) ignorada(s) sem telefone válido` +
+      (duplicated ? `, ${duplicated} duplicado(s)` : ''));
+    toast(`${added} contato(s) importado(s)` + (ignored ? ` · ${ignored} ignorado(s)` : '') + (duplicated ? ` · ${duplicated} duplicado(s)` : ''));
+    resetExcel();
+  }
+
+  function resetExcel() {
+    state.excel = null;
+    $('excelConfig').classList.add('hidden');
+    $('dropzone').classList.remove('hidden');
+    $('fileInput').value = '';
+  }
+
+  // ================= Etapa 3 — Mensagem =================
+  // Sem nome, remove o {nome} junto com o espaço anterior ("Olá {nome}!" → "Olá!")
+  function renderMessage(template, contact) {
+    const name = contact && contact.name ? contact.name : '';
+    return name ? template.replace(/\{nome\}/gi, name) : template.replace(/ ?\{nome\}/gi, '');
+  }
+
+  function getTemplates() {
+    const main = $('messageInput').value;
+    const list = main.trim() ? [main] : [];
+    if ($('abToggle').checked) {
+      document.querySelectorAll('#variationsList textarea').forEach((t) => {
+        if (t.value.trim()) list.push(t.value);
+      });
+    }
+    return list;
+  }
+
+  // Aplica *negrito*, _itálico_ e ~riscado~ sobre texto já escapado
+  function formatWhats(html) {
+    return html
+      .replace(/\*([^*\n]+)\*/g, '<strong>$1</strong>')
+      .replace(/(^|[\s(])_([^_\n]+)_(?=$|[\s).,!?])/gm, '$1<em>$2</em>')
+      .replace(/~([^~\n]+)~/g, '<s>$1</s>');
+  }
+
+  function showPreview() {
+    const templates = getTemplates();
+    if (!templates.length) {
+      toast('Escreva a mensagem primeiro', 'warn');
+      return;
+    }
+    const contact = state.contacts[0] || { name: 'Contato Exemplo', phone: '5511999999999' };
+    const time = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const multi = templates.length > 1;
+    $('previewMeta').textContent = `Pré-visualização para ${contactLabel(contact)}`;
+    $('previewBubbles').innerHTML = templates.map((t, i) => (
+      `<div class="bubble">${multi ? `<span class="tag">Variação ${letter(i)}</span>` : ''}` +
+      `${formatWhats(esc(renderMessage(t, contact)))}<span class="time">${time} ✓✓</span></div>`
+    )).join('');
+    // 'block' explícito: a classe .preview-box tem display:none
+    $('previewBox').style.display = 'block';
+  }
+
+  function refreshPreviewIfOpen() {
+    if ($('previewBox').style.display === 'block') {
+      if (getTemplates().length) showPreview();
+      else $('previewBox').style.display = 'none';
+    }
+  }
+
+  function updateCharCount() {
+    const len = $('messageInput').value.length;
+    $('charCount').textContent = `${len} caractere${len === 1 ? '' : 's'}`;
+  }
+
+  function insertAtCursor(textarea, text) {
+    const start = textarea.selectionStart ?? textarea.value.length;
+    const end = textarea.selectionEnd ?? start;
+    textarea.focus();
+    textarea.setRangeText(text, start, end, 'end');
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  function addVariation(text = '') {
+    const id = `variation-${++state.variationSeq}`;
+    const wrap = document.createElement('div');
+    wrap.className = 'variation';
+    wrap.innerHTML =
+      `<div class="label-row"><label for="${id}"></label>` +
+      `<button type="button" class="btn ghost sm danger-text" data-remove-variation>✕ Remover</button></div>` +
+      `<textarea id="${id}" placeholder="Outra forma de dizer a mesma coisa… use {nome}"></textarea>`;
+    wrap.querySelector('textarea').value = text;
+    $('variationsList').appendChild(wrap);
+    relabelVariations();
+    wrap.querySelector('textarea').focus();
+  }
+
+  function relabelVariations() {
+    document.querySelectorAll('#variationsList .variation').forEach((v, i) => {
+      v.querySelector('label').textContent = `Variação ${letter(i + 1)}`;
+    });
+  }
+
+  function toggleAB() {
+    const on = $('abToggle').checked;
+    $('abPanel').classList.toggle('hidden', !on);
+    $('mainVariationTag').classList.toggle('hidden', !on);
+    if (on && !$('variationsList').children.length) addVariation();
+    refreshPreviewIfOpen();
+  }
+
+  // ================= Etapa 4 — Delay =================
+  function getDelays() {
+    return { min: parseFloat($('delayMin').value), max: parseFloat($('delayMax').value) };
+  }
+
+  function delayError() {
+    const { min, max } = getDelays();
+    if (!Number.isFinite(min) || min < 1) return 'O tempo mínimo deve ser de pelo menos 1 segundo.';
+    if (!Number.isFinite(max)) return 'Informe o tempo máximo.';
+    if (max < min) return 'O tempo máximo deve ser maior ou igual ao tempo mínimo.';
+    return '';
+  }
+
+  function updateDelayUI() {
+    const { min, max } = getDelays();
+    const err = delayError();
+    $('delayError').textContent = err;
+    $('delayError').classList.toggle('hidden', !err);
+    $('delayWarn').classList.toggle('hidden', !(Number.isFinite(min) && min >= 1 && min < 5));
+    $('delayPreview').innerHTML = err
+      ? 'Corrija os valores para ver o intervalo.'
+      : `Aguardará entre <strong>${fmtSec(min)}</strong> e <strong>${fmtSec(max)}</strong> entre cada envio`;
+    const n = state.contacts.length;
+    $('delayEstimate').textContent = !err && n > 1
+      ? `Com ${n} contatos, o disparo deve levar cerca de ${humanDuration((n - 1) * ((min + max) / 2) * 1000)} (sem contar o tempo de cada envio).`
+      : '';
+  }
+
+  // ================= Navegação =================
+  function stepError(n) {
+    switch (n) {
+      case 1:
+        if (!selectedInstance()) return 'Selecione uma instância (clique em ↺ Carregar)';
+        if (!$('tokenInput').value.trim()) return 'Informe o token da instância';
+        return '';
+      case 2:
+        return state.contacts.length ? '' : 'Adicione pelo menos um contato';
+      case 3:
+        return $('messageInput').value.trim() ? '' : 'Escreva a mensagem principal';
+      case 4:
+        return delayError();
+      default:
+        return '';
+    }
+  }
+
+  function canLeave(n) {
+    const err = stepError(n);
+    if (err) {
+      toast(err, 'error');
+      return false;
+    }
+    if (n === 1) {
+      const inst = selectedInstance();
+      const name = instanceName(inst);
+      if (!isConnected(inst) && state.ackDisconnected !== name) {
+        const ok = confirm(`A instância "${name}" aparece como DESCONECTADA. Os envios provavelmente vão falhar.\n\nContinuar mesmo assim?`);
+        if (!ok) return false;
+        state.ackDisconnected = name;
+      }
+    }
+    return true;
+  }
+
+  function goToStep(target) {
+    if (state.running || target === state.step || target < 1 || target > STEP_COUNT) return;
+    if (target > state.step) {
+      for (let s = state.step; s < target; s++) {
+        if (!canLeave(s)) {
+          if (s !== state.step) showStep(s);
+          return;
+        }
+      }
+    }
+    showStep(target);
+  }
+
+  function showStep(n) {
+    state.step = n;
+    document.querySelectorAll('.step').forEach((el) => el.classList.toggle('active', Number(el.dataset.step) === n));
+    document.querySelectorAll('.step-item').forEach((el) => {
+      const s = Number(el.dataset.step);
+      el.classList.toggle('active', s === n);
+      el.classList.toggle('done', s < n);
+      el.querySelector('.step-circle').textContent = s < n ? '✓' : String(s);
+      if (s === n) el.setAttribute('aria-current', 'step');
+      else el.removeAttribute('aria-current');
+    });
+    $('stepperFill').style.width = `${((n - 1) / (STEP_COUNT - 1)) * 100}%`;
+    $('btnBack').disabled = n === 1 || state.running;
+    $('btnNext').classList.toggle('hidden', n === STEP_COUNT);
+    $('stepIndicator').textContent = `Etapa ${n} de ${STEP_COUNT}`;
+    if (n === 4) updateDelayUI();
+    if (n === 5) renderPreSummary();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // ================= Etapa 5 — Disparo =================
+  function renderPreSummary() {
+    const inst = selectedInstance();
+    const { min, max } = getDelays();
+    const count = getTemplates().length;
+    $('preInstance').innerHTML = inst
+      ? `<span class="dot ${isConnected(inst) ? 'on' : 'off'}"></span>${esc(instanceName(inst))}`
+      : '—';
+    $('preInstance').title = instanceName(inst);
+    $('preContacts').textContent = state.contacts.length;
+    $('preDelay').textContent = delayError() ? '—' : `${fmtSec(min)} – ${fmtSec(max)}`;
+    $('preMessages').textContent = count > 1 ? `${count} variações` : '1 mensagem';
+    if (!state.running && $('postSummary').classList.contains('hidden')) updateProgress(0, state.contacts.length);
+  }
+
+  function updateProgress(done, total) {
+    const pct = total ? Math.round((done / total) * 100) : 0;
+    $('progressText').textContent = `${done} / ${total}`;
+    $('progressPct').textContent = `${pct}%`;
+    $('progressBar').style.width = `${pct}%`;
+    $('progressTrack').setAttribute('aria-valuenow', String(pct));
+  }
+
+  function setRunStatus(text) {
+    $('runStatus').textContent = text;
+  }
+
+  function setRunningUI(on) {
+    $('btnStart').disabled = on;
+    $('btnStop').disabled = !on;
+    $('btnBack').disabled = on || state.step === 1;
+    $('btnNewCampaign').disabled = on;
+    $('btnClearContacts').disabled = on || !state.contacts.length;
+    document.querySelectorAll('.step-item').forEach((b) => { b.disabled = on; });
+    $('progressBar').classList.toggle('running', on);
+  }
+
+  // Espera em fatias de 250 ms checando a flag — permite parar no meio do delay
+  async function waitInterruptible(ms) {
+    const start = Date.now();
+    while (!state.stopRequested) {
+      const left = ms - (Date.now() - start);
+      if (left <= 0) break;
+      setRunStatus(`Próximo envio em ${Math.ceil(left / 1000)}s`);
+      await sleep(Math.min(250, left));
+    }
+    return Date.now() - start;
+  }
+
+  async function startCampaign() {
+    if (state.running) return;
+    for (let s = 1; s <= 4; s++) {
+      const err = stepError(s);
+      if (err) {
+        toast(err, 'error');
+        showStep(s);
+        return;
+      }
+    }
+
+    const inst = selectedInstance();
+    const name = instanceName(inst);
+    const token = $('tokenInput').value.trim();
+    const list = state.contacts.slice();
+    const templates = getTemplates();
+    const { min, max } = getDelays();
+    const total = list.length;
+
+    if (!confirm(`Iniciar o disparo para ${total} contato(s) usando a instância "${name}"?`)) return;
+
+    state.running = true;
+    state.stopRequested = false;
+    setRunningUI(true);
+    $('postSummary').classList.add('hidden');
+    updateProgress(0, total);
+
+    const startedAt = Date.now();
+    const delays = [];
+    let sent = 0;
+    let errors = 0;
+    let processed = 0;
+    let authFail = false;
+
+    log('sys', `Disparo iniciado — ${total} contato(s) · instância "${name}" · intervalo ${fmtSec(min)}–${fmtSec(max)}` +
+      (templates.length > 1 ? ` · ${templates.length} variações` : ''));
+
+    for (let i = 0; i < total; i++) {
+      if (state.stopRequested) break;
+
+      const contact = list[i];
+      const variant = Math.floor(Math.random() * templates.length);
+      const text = renderMessage(templates[variant], contact);
+      setRunStatus(`Enviando para ${contactLabel(contact)}…`);
+
+      try {
+        await api('/api/send/text', {
+          method: 'POST',
+          headers: { 'X-Instance-Token': token },
+          body: { number: contact.phone, text },
+        });
+        sent++;
+        log('ok', contactLabel(contact) + (templates.length > 1 ? ` · variação ${letter(variant)}` : ''));
+      } catch (e) {
+        errors++;
+        log('err', contactLabel(contact), e.message);
+        if (e.status === 401 || /not authorized|unauthorized/i.test(e.message)) authFail = true;
+      }
+
+      processed = i + 1;
+      updateProgress(processed, total);
+
+      // Token errado falharia em todos os contatos — interrompe já
+      if (authFail) {
+        log('sys', 'Token recusado pelo servidor (not authorized) — disparo interrompido. Confira o token na etapa 1.');
+        break;
+      }
+
+      if (i < total - 1 && !state.stopRequested) {
+        const waited = await waitInterruptible(randInt(Math.round(min * 1000), Math.round(max * 1000)));
+        if (!state.stopRequested) delays.push(waited);
+      }
+    }
+
+    const stopped = state.stopRequested && !authFail;
+    if (stopped) log('sys', `Disparo interrompido pelo usuário — ${processed} de ${total} processado(s)`);
+    else if (!authFail) log('sys', `Disparo concluído — ${sent} enviado(s), ${errors} erro(s)`);
+
+    state.running = false;
+    state.stopRequested = false;
+    setRunningUI(false);
+    setRunStatus(authFail ? 'Interrompido (token)' : stopped ? 'Interrompido' : 'Concluído ✓');
+
+    showPostSummary({ sent, errors, elapsed: Date.now() - startedAt, delays, total, processed, stopped, authFail });
+  }
+
+  function requestStop() {
+    if (!state.running || state.stopRequested) return;
+    state.stopRequested = true;
+    $('btnStop').disabled = true;
+    setRunStatus('Parando…');
+    log('sys', 'Interrupção solicitada — finalizando o envio atual…');
+  }
+
+  function showPostSummary({ sent, errors, elapsed, delays, total, processed, stopped, authFail }) {
+    $('sumSent').textContent = sent;
+    $('sumErrors').textContent = errors;
+    $('sumTime').textContent = formatDuration(elapsed);
+    $('sumDelay').textContent = delays.length
+      ? `${(delays.reduce((a, b) => a + b, 0) / delays.length / 1000).toFixed(1)}s`
+      : '—';
+
+    const warn = $('stoppedWarn');
+    if (authFail) {
+      warn.className = 'banner error';
+      warn.textContent = 'Disparo interrompido: o servidor recusou o token ("not authorized"). O token deve ser exatamente o valor do campo "token" usado ao criar a instância.';
+    } else if (stopped) {
+      warn.className = 'banner warn';
+      warn.textContent = `⚠ Disparo interrompido pelo usuário — ${total - processed} de ${total} contato(s) não foram processados.`;
+    } else {
+      warn.className = 'banner hidden';
+    }
+    $('postSummary').classList.remove('hidden');
+  }
+
+  function newCampaign() {
+    if (state.running) return;
+    state.contacts = [];
+    renderContacts();
+    $('postSummary').classList.add('hidden');
+    setRunStatus('');
+    updateProgress(0, 0);
+    log('sys', 'Novo disparo — lista de contatos limpa (instância e mensagem mantidas)');
+    showStep(2);
+  }
+
+  // ================= Eventos =================
+  function bindEvents() {
+    // Navegação
+    $('btnBack').addEventListener('click', () => goToStep(state.step - 1));
+    $('btnNext').addEventListener('click', () => goToStep(state.step + 1));
+    document.querySelectorAll('.step-item').forEach((b) => {
+      b.addEventListener('click', () => goToStep(Number(b.dataset.step)));
+    });
+
+    // Etapa 1
+    $('btnLoadInstances').addEventListener('click', () => loadInstances(false));
+    $('instanceSelect').addEventListener('change', onInstanceChange);
+    $('btnToggleToken').addEventListener('click', () => {
+      const input = $('tokenInput');
+      input.type = input.type === 'password' ? 'text' : 'password';
+    });
+    $('btnSaveToken').addEventListener('click', saveToken);
+    $('tokenInput').addEventListener('input', updateTokenHint);
+    $('tokenInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveToken(); });
+
+    // Etapa 2
+    document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+    $('btnAddContact').addEventListener('click', addManualContact);
+    $('contactName').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('contactPhone').focus(); });
+    $('contactPhone').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btnAddContact').click(); });
+    $('btnClearContacts').addEventListener('click', clearContacts);
+    $('contactsBody').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-index]');
+      if (!btn || state.running) return;
+      state.contacts.splice(Number(btn.dataset.index), 1);
+      renderContacts();
+    });
+
+    const dz = $('dropzone');
+    dz.addEventListener('click', () => $('fileInput').click());
+    dz.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('fileInput').click(); }
+    });
+    dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.classList.add('drag'); });
+    dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+    dz.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dz.classList.remove('drag');
+      handleFile(e.dataTransfer.files[0]);
+    });
+    $('fileInput').addEventListener('change', (e) => handleFile(e.target.files[0]));
+    $('hasHeader').addEventListener('change', (e) => {
+      state.excel.hasHeader = e.target.checked;
+      detectColumns();
+      renderExcel();
+    });
+    $('colPhone').addEventListener('change', (e) => { state.excel.colPhone = Number(e.target.value); renderExcelPreview(); });
+    $('colName').addEventListener('change', (e) => { state.excel.colName = Number(e.target.value); renderExcelPreview(); });
+    $('btnImport').addEventListener('click', importExcel);
+    $('btnCancelImport').addEventListener('click', resetExcel);
+
+    // Etapa 3
+    $('messageInput').addEventListener('input', () => { updateCharCount(); refreshPreviewIfOpen(); });
+    $('variationsList').addEventListener('input', refreshPreviewIfOpen);
+    $('variationsList').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-remove-variation]');
+      if (!btn) return;
+      btn.closest('.variation').remove();
+      relabelVariations();
+      refreshPreviewIfOpen();
+    });
+    document.addEventListener('focusin', (e) => {
+      if (e.target.matches('#messageInput, #variationsList textarea')) state.lastTextarea = e.target;
+    });
+    $('btnInsertNome').addEventListener('click', () => {
+      const target = state.lastTextarea && document.contains(state.lastTextarea) ? state.lastTextarea : $('messageInput');
+      insertAtCursor(target, '{nome}');
+    });
+    $('btnPreview').addEventListener('click', showPreview);
+    $('abToggle').addEventListener('change', toggleAB);
+    $('btnAddVariation').addEventListener('click', () => addVariation());
+
+    // Etapa 4
+    $('delayMin').addEventListener('input', updateDelayUI);
+    $('delayMax').addEventListener('input', updateDelayUI);
+
+    // Etapa 5
+    $('btnStart').addEventListener('click', startCampaign);
+    $('btnStop').addEventListener('click', requestStop);
+    $('btnNewCampaign').addEventListener('click', newCampaign);
+    $('logPanel').addEventListener('scroll', () => {
+      const p = $('logPanel');
+      state.autoScroll = p.scrollTop + p.clientHeight >= p.scrollHeight - 24;
+    });
+
+    window.addEventListener('beforeunload', (e) => {
+      if (state.running) { e.preventDefault(); e.returnValue = ''; }
+    });
+  }
+
+  bindEvents();
+  showStep(1);
+  renderContacts();
+  updateCharCount();
+  updateDelayUI();
+  loadInstances(true);
+})();
+</script>
+</body>
+</html>
