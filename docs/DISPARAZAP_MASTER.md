@@ -6,10 +6,10 @@
 
 | | |
 |---|---|
-| **Fase atual** | MVP local (disparador de texto via Evolution Go) com correções de segurança da Fase 3 ([SEGURANCA_MVP.md](SEGURANCA_MVP.md)); git local com o original (`908ca2f`) e as correções em commits próprios |
-| **Próxima fase** | Fase 2 — arquitetura do SaaS **proposta, aguardando aprovação** ([ARQUITETURA_SAAS.md](ARQUITETURA_SAAS.md)) |
+| **Fase atual** | MVP local (disparador de texto via Evolution Go) com correções de segurança da Fase 3 ([SEGURANCA_MVP.md](SEGURANCA_MVP.md)); git local com o original (`908ca2f`) e as correções em commits próprios. **Fase 4 concluída:** fundação técnica do SaaS em `saas/`, registrada em commit local (2026-11-01) |
+| **Próxima fase** | Fase 5 — banco de dados, autenticação e Super Admin (**aguardando autorização**) |
 | **Hospedagem** | VPS Hostinger ([PLANO_IMPLANTACAO_HOSTINGER.md](PLANO_IMPLANTACAO_HOSTINGER.md)) |
-| **Última atualização** | 2026-10-31 |
+| **Última atualização** | 2026-11-01 |
 
 ---
 
@@ -29,6 +29,9 @@ outras plataformas (como a MyLinksss).
 | [`docs/ARQUITETURA_SAAS.md`](ARQUITETURA_SAAS.md) | Diagnóstico de segurança, stack, autenticação, multi-tenancy, modelo de dados e plano incremental do SaaS | Quando a arquitetura mudar ou uma decisão D1–D10 for tomada |
 | [`docs/PLANO_IMPLANTACAO_HOSTINGER.md`](PLANO_IMPLANTACAO_HOSTINGER.md) | Containers, rede, HTTPS, segredos, backup, monitoramento, deploy e homologação na VPS | Quando a infraestrutura mudar ou uma decisão I1–I7 for tomada |
 | [`docs/SEGURANCA_MVP.md`](SEGURANCA_MVP.md) | Correções de segurança do MVP, regra de telefone, riscos pendentes, proposta de limites de envio, testes e reversão | A cada mudança de segurança no MVP |
+| [`saas/README.md`](../saas/README.md) | Instalação, execução e testes do SaaS | Quando mudarem comandos ou requisitos |
+| [`saas/docs/ESTRUTURA_TECNICA.md`](../saas/docs/ESTRUTURA_TECNICA.md) | Arquitetura implementada do SaaS e responsabilidades de cada pasta | A cada mudança estrutural no `saas/` |
+| [`saas/docs/DECISOES_TECNICAS.md`](../saas/docs/DECISOES_TECNICAS.md) | Decisões técnicas do SaaS, alternativas e versões utilizadas | A cada decisão técnica ou atualização de dependência |
 | [`docs/CHANGELOG_DESENVOLVIMENTO.md`](CHANGELOG_DESENVOLVIMENTO.md) | Registro cronológico das alterações | A cada alteração de código ou documentação |
 | [`doc_evolution_go.md`](../doc_evolution_go.md) | Referência da API Evolution Go | Quando a API mudar |
 
@@ -38,7 +41,7 @@ outras plataformas (como a MyLinksss).
 
 | Módulo | Escopo | Situação |
 |---|---|---|
-| **Painel SaaS** | Super Admin, Empresas, Usuários, papéis e permissões | 📐 Arquitetura proposta |
+| **Painel SaaS** | Super Admin, Empresas, Usuários, papéis e permissões | 🧱 Fundação técnica pronta (Fase 4): API, painel e worker, sem funcionalidades de negócio |
 | **WhatsApp** | Evolution Go: instâncias, QR Code/pareamento, status, envio e recebimento | 🟨 Parcial (listar instâncias + enviar texto, com TLS verificado) |
 | **Redes sociais** | Zernio, conectada por conta de usuário (Instagram, Facebook, TikTok) | ⬜ Não iniciado |
 | **Agentes de IA** | Personalidade, base de conhecimento e regras de atendimento | ⬜ Não iniciado |
@@ -74,7 +77,14 @@ Navegador (index.html)                 Servidor local (server.js)            Evo
 
 ## 5. Arquitetura alvo
 
-> **Proposta detalhada (aguardando aprovação):** [ARQUITETURA_SAAS.md](ARQUITETURA_SAAS.md). Resumo da recomendação:
+> **Implementado na Fase 4 (2026-10-31):**
+> - monorepo `saas/` com API Fastify, painel React + Vite e worker em TypeScript;
+> - pacotes `contracts` e `shared`;
+> - sem banco, filas, autenticação ou integrações.
+>
+> Ver [ESTRUTURA_TECNICA.md](../saas/docs/ESTRUTURA_TECNICA.md) e [DECISOES_TECNICAS.md](../saas/docs/DECISOES_TECNICAS.md).
+>
+> **Proposta detalhada:** [ARQUITETURA_SAAS.md](ARQUITETURA_SAAS.md). Resumo da recomendação:
 > monólito modular em Node.js 24 + TypeScript (Fastify), PostgreSQL 17 com Row Level Security, Redis + BullMQ com o banco
 > como fonte da verdade, processo `worker` separado para campanhas, frontend React + Vite, Caddy com HTTPS e Docker Compose
 > em VPS Hostinger. O diagrama abaixo é a visão conceitual.
@@ -160,6 +170,10 @@ Navegador (index.html)                 Servidor local (server.js)            Evo
 | 2026-10-31 | Respostas ao navegador por **lista de campos permitidos** | A lista de proibidos deixava passar campos aninhados e credenciais de proxy |
 | 2026-10-31 | Regra de telefone explícita em `phone.js`: sem `+` só Brasil (55); outros países com `+`; nunca acrescenta DDI | Evitar envio ao destinatário errado |
 | 2026-10-31 | Testes versionados com `node:test` (+ jsdom e SheetJS 0.20.3 oficial como dependências de desenvolvimento) | Recomendação Q2 da auditoria |
+| 2026-10-31 | SaaS em `saas/`, monorepo npm workspaces independente da raiz; worker como aplicação própria (`apps/worker`); pacotes `contracts` e `shared` | Fase 4; não altera o MVP |
+| 2026-10-31 | Node 24 mantido (Maintenance LTS desde 2026-10-20, suporte até 2028-04-30); avaliar Node 26 antes da primeira implantação | Calendário oficial do Node verificado |
+| 2026-10-31 | TypeScript 7.0.2, Fastify 5, Zod 4, React 19 + Vite 8 + React Router 8, Vitest 5 | Versões estáveis mais recentes; detalhes em `saas/docs/DECISOES_TECNICAS.md` |
+| 2026-10-31 | Erros da API em RFC 9457 desde a primeira rota; CORS por lista explícita (vazia por padrão); escuta em `127.0.0.1` | Segurança desde a fundação |
 
 ## 10. Decisões pendentes
 
@@ -169,7 +183,10 @@ Estas decisões precisam ser tomadas antes de iniciar o SaaS. As recomendações
 
 - [x] Hospedagem: VPS Hostinger (2026-10-31)
 - [ ] Topologia do Evolution Go na VPS (depende do levantamento I1) e servidor compartilhado ou por empresa (D4)
-- [ ] Stack do SaaS (D1), local do código (D2), autenticação (D3), fila (D5)
+- [x] Stack do SaaS (D1) e local do código (D2) — aplicados na Fase 4 (2026-10-31)
+- [ ] Autenticação (D3) e fila (D5)
+- [x] Registrar a Fase 4 em commit local (`feat: establish DisparaZap SaaS foundation`, 2026-11-01), depois de corrigir o tempo-limite dos testes de processo (ver [CHANGELOG](CHANGELOG_DESENVOLVIMENTO.md))
+- [x] Descrever o `saas/` e a separação MVP/SaaS no `CLAUDE.md` (2026-11-01)
 - [ ] Política de consentimento (D6) e campanha de teste obrigatória (D7)
 - [x] Correções rápidas de segurança no MVP (D8) — V1, V2, V3, V7 e `.env.example` em 2026-10-31 ([SEGURANCA_MVP.md](SEGURANCA_MVP.md))
 - [x] Commits locais do estado original (`908ca2f`) e das correções da Fase 3 (2026-10-31)
@@ -189,7 +206,7 @@ Estas decisões precisam ser tomadas antes de iniciar o SaaS. As recomendações
 | # | Etapa | # | Etapa |
 |---|---|---|---|
 | 0 | Base: git + correções de segurança do MVP — **concluída em 2026-10-31** | 6 | Conexão segura com o Evolution Go |
-| 1 | Fundação técnica (`saas/`, TS, Compose, testes) | 7 | Instâncias e QR Code |
+| 1 | Fundação técnica (`saas/`, TS, testes) — **concluída em 2026-10-31 (Fase 4)**; Docker Compose adiado para a fase de banco | 7 | Instâncias e QR Code |
 | 2 | Autenticação e Super Admin | 8 | Contatos autorizados (consentimento) |
 | 3 | Empresas e membros | 9 | Fila persistente, histórico e campanhas de teste |
 | 4 | Autorização no backend (RBAC + RLS) | 10 | API preparada para integração (API keys, webhooks) |

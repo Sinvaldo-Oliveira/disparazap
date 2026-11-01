@@ -1,0 +1,36 @@
+{
+  "name": "disparazap-saas",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Fundação técnica do SaaS DisparaZap — monólito modular (API, painel web e worker)",
+  "engines": {
+    "node": ">=24.15.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:api": "npm run dev -w @disparazap/api",
+    "dev:worker": "npm run dev -w @disparazap/worker",
+    "dev:web": "npm run dev -w @disparazap/web",
+    "build": "tsc -b && npm run build -w @disparazap/web",
+    "build:api": "tsc -b apps/api",
+    "build:worker": "tsc -b apps/worker",
+    "build:web": "npm run build -w @disparazap/web",
+    "typecheck": "tsc -b && tsc -p apps/web/tsconfig.json && tsc -p tsconfig.spec.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "tsc -b --clean"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "^24.19.2",
+    "@vitejs/plugin-react": "^6.1.2",
+    "jsdom": "^30.1.3",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}

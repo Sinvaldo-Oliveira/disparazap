@@ -1,8 +1,11 @@
 # Disparador WhatsApp — Evolution Go
 
-Aplicação de disparos em massa via WhatsApp usando a API do Evolution Go. Servidor Node.js local que atua como proxy para a API externa, com frontend HTML/CSS/JS puro.
+Aplicação de disparos em massa via WhatsApp usando a API do Evolution Go. O repositório tem **dois projetos independentes**:
 
-**Fase atual:** MVP local, com correções de segurança da Fase 3 (ver `docs/SEGURANCA_MVP.md`) e repositório git **local**. O projeto vai evoluir para um painel SaaS multiempresa (WhatsApp, redes sociais via Zernio, agentes de IA, automações, API REST + webhooks). A visão e as decisões estão em `docs/DISPARAZAP_MASTER.md`.
+- **MVP** (raiz): servidor Node.js local que atua como proxy para a API externa, com frontend HTML/CSS/JS puro. É o que está em uso.
+- **SaaS** (`saas/`): fundação técnica do futuro painel multiempresa. Tem API, painel web e worker em TypeScript, ainda **sem funcionalidades de negócio**.
+
+**Fase atual:** MVP local com as correções de segurança da Fase 3 (ver `docs/SEGURANCA_MVP.md`) e fundação técnica do SaaS concluída na Fase 4 (ver `saas/docs/ESTRUTURA_TECNICA.md`). Repositório git **local**. Próxima fase: Fase 5 (banco de dados, autenticação e Super Admin), que **só começa com autorização**. O SaaS vai reunir WhatsApp, redes sociais via Zernio, agentes de IA, automações e API REST + webhooks; a visão e as decisões estão em `docs/DISPARAZAP_MASTER.md`.
 
 ---
 
@@ -14,26 +17,86 @@ Aplicação de disparos em massa via WhatsApp usando a API do Evolution Go. Serv
 | `docs/DISPARAZAP_MASTER.md` | Visão, módulos, arquitetura, decisões registradas e pendentes, roteiro |
 | `docs/AUDITORIA_INICIAL.md` | Retrato do projeto em 2026-10-31 — registro histórico, não reescrever |
 | `docs/CHANGELOG_DESENVOLVIMENTO.md` | Registro cronológico de todas as alterações |
-| `docs/ARQUITETURA_SAAS.md` | Arquitetura proposta do SaaS, modelo de dados e plano incremental (aguardando aprovação) |
+| `docs/ARQUITETURA_SAAS.md` | Arquitetura do SaaS, modelo de dados e plano incremental (stack e local do código aplicados na Fase 4; demais etapas aguardando aprovação) |
 | `docs/PLANO_IMPLANTACAO_HOSTINGER.md` | Plano de infraestrutura na VPS Hostinger (aguardando aprovação) |
 | `docs/SEGURANCA_MVP.md` | Correções de segurança do MVP, regra de telefone, riscos pendentes e propostas |
+| `saas/README.md` | Instalação, execução e testes do SaaS |
+| `saas/docs/ESTRUTURA_TECNICA.md` | Arquitetura implementada do SaaS e responsabilidade de cada pasta |
+| `saas/docs/DECISOES_TECNICAS.md` | Decisões técnicas do SaaS, alternativas consideradas e versões das dependências |
 | `doc_evolution_go.md` | Referência da API Evolution Go |
 
 ## Regras obrigatórias
 
-- **Nunca registre credenciais** em nenhum arquivo do projeto (Markdown, código, comentários, testes, commits): senhas, tokens de instância, `GLOBAL_API_KEY`, credenciais da Zernio, chaves de provedores de IA, URLs privadas de servidores ou dados pessoais reais (telefones, nomes de clientes). Use placeholders como `SUA_GLOBAL_API_KEY` ou `{EVOLUTION_URL}`. Não leia nem copie o conteúdo do `.env`.
-- **Antes de implementar uma funcionalidade**, consulte `docs/DISPARAZAP_MASTER.md` e `docs/AUDITORIA_INICIAL.md` para não duplicar o que existe nem contrariar uma decisão registrada.
+- **Nunca registre credenciais** em nenhum arquivo do projeto (Markdown, código, comentários, testes, commits): senhas, tokens de instância, `GLOBAL_API_KEY`, credenciais da Zernio, chaves de provedores de IA, URLs privadas de servidores ou dados pessoais reais (telefones, nomes de clientes). Use placeholders como `SUA_GLOBAL_API_KEY` ou `{EVOLUTION_URL}`. Não leia nem copie o conteúdo do `.env` (nem do `saas/.env`).
+- **Documentação de cada fase:**
+  - **Antes de começar**, consulte `docs/DISPARAZAP_MASTER.md` e `docs/AUDITORIA_INICIAL.md`. No SaaS, consulte também `saas/docs/ESTRUTURA_TECNICA.md` e `saas/docs/DECISOES_TECNICAS.md`. O objetivo é não duplicar o que existe nem contrariar uma decisão registrada.
+  - **A cada alteração**, registre uma entrada em `docs/CHANGELOG_DESENVOLVIMENTO.md`. A cada decisão de produto ou arquitetura, atualize `docs/DISPARAZAP_MASTER.md`. No SaaS, atualize também `saas/docs/` quando a estrutura, uma decisão técnica ou uma versão de dependência mudar.
+  - **Ao terminar a fase**, deixe o estado e as pendências registrados nesses documentos.
+  - Não reescreva documentos históricos (`docs/AUDITORIA_INICIAL.md`).
+- **MVP e SaaS são separados:**
+  - mudança no SaaS fica dentro de `saas/`; mudança no MVP fica nos arquivos da raiz;
+  - uma tarefa num projeto não altera o outro sem autorização explícita;
+  - nenhum dos dois importa código do outro;
+  - o SaaS tem `package.json`, `package-lock.json`, `.gitignore` e `.env` próprios: não declare workspaces nem dependências do SaaS no `package.json` da raiz.
+- **Serviços reais e VPS:** sem autorização explícita da fase, não faça nenhuma destas coisas:
+  - conectar a PostgreSQL, Redis, Evolution Go real, Zernio, MyLinksss ou qualquer banco ou serviço de produção;
+  - instalar ou iniciar serviços (Docker incluído);
+  - acessar ou modificar a VPS Hostinger;
+  - criar instâncias WhatsApp ou enviar mensagens reais.
 - **Não implemente módulos do SaaS** (login, empresas, banco, Zernio, IA, API pública) sem um plano aprovado pelo dono do produto.
-- **A cada alteração**, registre uma entrada em `docs/CHANGELOG_DESENVOLVIMENTO.md`; a cada decisão de produto ou arquitetura, atualize `docs/DISPARAZAP_MASTER.md`.
 - A Zernio é uma integração **independente** do Evolution Go. Não presuma o que ela suporta: confirme na documentação oficial antes de planejar.
 - **Nunca desligue a verificação TLS** (`rejectUnauthorized: false`, `NODE_TLS_REJECT_UNAUTHORIZED=0`) para contornar erro de certificado. Certificado próprio → `EVOLUTION_CA_FILE`.
-- **Não mude a escuta para fora de `127.0.0.1`** no código: o MVP não tem login. Quem precisar de rede usa `HOST` no `.env`, ciente do risco.
-- **Git:** repositório só local. Nunca faça commit, push, remoto ou deploy sem aprovação explícita; nunca versione `.env`, `backup/` ou chaves.
-- **Testes:** `npm test` antes de concluir qualquer mudança de código. Os testes usam só o Evolution simulado — nunca instâncias reais nem envios reais.
+- **Não mude a escuta para fora de `127.0.0.1`** no código: nem o MVP nem o SaaS têm login. Quem precisar de rede usa `HOST` no `.env` do MVP, ciente do risco. No SaaS, o padrão de `API_HOST`, do Vite e do preview continua sendo `127.0.0.1`.
+- **Git:** repositório só local. Nunca faça commit, push, remoto ou deploy sem aprovação explícita. Nunca versione `.env`, `saas/.env`, `backup/`, `node_modules/`, `dist/` ou chaves.
+- **Testes:** rode antes de concluir qualquer mudança de código:
+  - **MVP:** `npm test` na raiz;
+  - **SaaS:** `npm test`, `npm run typecheck` e `npm run build` dentro de `saas/`.
+
+  Ao mexer num projeto, rode também a suíte do outro. Os testes usam só serviços simulados: nunca instâncias reais nem envios reais.
 
 ---
 
-## Stack
+## SaaS — monorepo `saas/`
+
+É um projeto npm independente (npm workspaces, lockfile próprio) em TypeScript. Em desenvolvimento, o Node 24 executa o TypeScript direto; em produção, roda o JavaScript compilado com `tsc`. A estrutura está em `saas/docs/ESTRUTURA_TECNICA.md`, e as decisões e versões em `saas/docs/DECISOES_TECNICAS.md`.
+
+| Pasta | Papel |
+|---|---|
+| `apps/api` | API Fastify 5. Já tem: configuração validada com Zod, `GET /health/live`, prefixo `/api/v1` (ainda sem rotas), erros em RFC 9457, logs com redação, CORS por lista explícita e cabeçalhos de segurança |
+| `apps/web` | Painel React 19 + Vite 8 + React Router 8: layout, menu, Visão Geral e páginas "Em desenvolvimento" |
+| `apps/worker` | Processo das filas: por enquanto só ciclo de vida e encerramento controlado; nenhuma fila |
+| `packages/contracts` | Contratos públicos (Zod + tipos) usados pela API e pelo painel |
+| `packages/shared` | Código só de servidor: `parseEnv`, logger com redação, `handleShutdownSignals` |
+| `infra/docker` | Reservado; ainda não há Docker Compose |
+| `docs` | `ESTRUTURA_TECNICA.md` e `DECISOES_TECNICAS.md` |
+
+Comandos (sempre dentro de `saas/`, com Node ≥ 24.15):
+
+```bash
+npm install
+npm run dev:api        # API em http://127.0.0.1:3100 (reinicia ao salvar)
+npm run dev:web        # painel em http://127.0.0.1:5173 (repassa /health e /api para a API)
+npm run dev:worker     # worker (sem filas)
+npm test               # Vitest: pacotes, API, worker e painel (jsdom)
+npm run typecheck      # TypeScript em tudo, inclusive nos testes
+npm run build          # tsc -b (pacotes, API, worker) + vite build (painel)
+npm run build:api      # ou build:worker / build:web
+```
+
+- **Configuração:** o `.env` do SaaS é `saas/.env` (modelo em `saas/.env.example`), separado do `.env` do MVP. Todas as variáveis têm padrão seguro.
+- **Testes:** os nomes terminam em `.spec.ts(x)`. Não use, dentro de `saas/`, `*.test.*`, `*-test.*`, `*_test.*`, `test-*.*`, `test.*` nem pastas `test/`, porque o `node --test` da raiz descobriria e executaria esses arquivos.
+- **TypeScript:**
+  - só sintaxe "apagável": sem `enum`, `namespace` nem propriedades de parâmetro (`erasableSyntaxOnly`);
+  - imports relativos com extensão `.ts`.
+- **Segurança:**
+  - nenhum segredo no painel (o bundle é público);
+  - respostas da API pelo formato definido em `packages/contracts`, nunca repassando dados internos.
+- **Interface honesta:** o painel não mostra dados inventados nem login falso; módulo não implementado aparece como "Em desenvolvimento".
+- **Ainda não existe:** autenticação, banco, migrations, filas, Docker Compose, integrações e módulos de negócio.
+
+---
+
+## Stack do MVP
 
 - **Backend**: Node.js + Express + dotenv (`server.js`)
 - **Frontend**: `index.html` com HTML, CSS e JS embutidos (sem frameworks)
@@ -42,7 +105,7 @@ Aplicação de disparos em massa via WhatsApp usando a API do Evolution Go. Serv
 
 ---
 
-## Variáveis de ambiente
+## Variáveis de ambiente do MVP
 
 Copie `.env.example` para `.env` e preencha os valores:
 
@@ -56,7 +119,7 @@ Copie `.env.example` para `.env` e preencha os valores:
 
 ---
 
-## Rodar o projeto
+## Rodar o MVP
 
 ```bash
 cp .env.example .env   # preencha com suas credenciais
@@ -71,7 +134,7 @@ npm test               # testes contra o Evolution simulado (nenhum envio real)
 
 ---
 
-## Arquivos principais
+## Arquivos principais do MVP
 
 | Arquivo | Papel |
 |---|---|
@@ -224,7 +287,9 @@ Consulte `doc_evolution_go.md` para todos os 79 endpoints disponíveis.
 
 ---
 
-## Decisões técnicas
+## Decisões técnicas do MVP
+
+As decisões do SaaS estão em `saas/docs/DECISOES_TECNICAS.md`.
 
 - `proxyFetch` em `server.js` usa módulos nativos do Node (`http`/`https`) — sem `node-fetch`
 - Segue redirects (até 5 saltos) **só para o mesmo host e nunca de HTTPS para HTTP**, porque a chave vai no header; POST vira GET em 302/303
@@ -244,7 +309,7 @@ Consulte `doc_evolution_go.md` para todos os 79 endpoints disponíveis.
 
 ---
 
-## Bugs conhecidos e corrigidos
+## Bugs conhecidos e corrigidos do MVP
 
 ### 1. Status da instância sempre "Desconectado" (corrigido)
 **Causa:** A resposta de `GET /instance/all` retorna `"connected": true/false` (booleano), mas o código buscava `connectionStatus` e `status` — campos que não existem nessa rota.  
@@ -265,9 +330,14 @@ Consulte `doc_evolution_go.md` para todos os 79 endpoints disponíveis.
 
 ## Ao fazer mudanças
 
-- Fase de MVP: `index.html` para UI/UX e lógica do frontend; `server.js` para proxy e rotas; `phone.js` para a regra de telefone (esta regra será revista quando a arquitetura do SaaS for aprovada)
-- Não criar arquivos desnecessários — manter a estrutura mínima (`docs/` e `tests/` fazem parte da estrutura)
-- Respostas ao navegador: sempre por lista de campos permitidos, nunca repassando o corpo do Evolution
-- Antes de concluir: `npm test` + rodar o servidor e verificar o fluxo completo
-- Registrar a alteração em `docs/CHANGELOG_DESENVOLVIMENTO.md`
-- Nunca expor `GLOBAL_API_KEY` em respostas de API ou logs do browser
+- **Onde mexer:**
+  - **MVP:** `index.html` para UI/UX e lógica do frontend; `server.js` para proxy e rotas; `phone.js` para a regra de telefone (esta regra será revista com a arquitetura do SaaS);
+  - **SaaS:** só dentro de `saas/`, na aplicação ou no pacote responsável (ver `saas/docs/ESTRUTURA_TECNICA.md`).
+- **Estrutura mínima:** não criar arquivos desnecessários. `docs/`, `tests/` e `saas/` fazem parte da estrutura.
+- **Respostas ao navegador:** sempre por lista de campos permitidos (MVP) ou pelo contrato de `packages/contracts` (SaaS), nunca repassando o corpo do Evolution nem dados internos.
+- **Antes de concluir:**
+  - **MVP:** `npm test`, rodar o servidor e verificar o fluxo completo;
+  - **SaaS:** `npm test`, `npm run typecheck` e `npm run build` em `saas/`;
+  - nos dois casos, rodar também a suíte do outro projeto.
+- **Registro:** anotar a alteração em `docs/CHANGELOG_DESENVOLVIMENTO.md` e, no SaaS, atualizar `saas/docs/` quando a estrutura ou uma decisão mudar.
+- **Chaves:** nunca expor `GLOBAL_API_KEY` (nem qualquer segredo) em respostas de API, no bundle do painel ou em logs do navegador.

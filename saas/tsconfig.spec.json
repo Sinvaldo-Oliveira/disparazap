@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": [
+    "packages/*/src/**/*.spec.ts",
+    "apps/api/src/**/*.spec.ts",
+    "apps/worker/src/**/*.spec.ts"
+  ]
+}

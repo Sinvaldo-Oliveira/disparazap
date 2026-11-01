@@ -8,6 +8,109 @@ Nunca registre senhas, tokens, chaves, URLs privadas de servidores ou dados pess
 
 ---
 
+## 2026-11-01 — Encerramento da Fase 4
+
+Fase 4 registrada num **único commit local autorizado**, `feat: establish DisparaZap SaaS foundation`. O hash está no `git log`.
+Sem remoto, push ou deploy. Nenhuma dependência nova, nenhum acesso a serviços reais ou à VPS.
+
+### Corrigido
+- **Teste intermitente de inicialização da API.**
+  - **Sintoma:** a primeira tentativa de commit foi interrompida porque o teste "inicia de forma independente…" de
+    `saas/apps/api/src/startup.spec.ts` falhou por tempo esgotado (suíte com 58/59).
+  - **Causa:** o teste espera a API por até 15 s (`expect.poll`), mas o Vitest encerra cada teste em 5 s por padrão.
+  - **Correção (opção A, aprovada):** limite explícito de 30 s só nos três testes que sobem processos reais: os dois de
+    `saas/apps/api/src/startup.spec.ts` e o de processo de `saas/apps/worker/src/worker.spec.ts`.
+  - **O que não mudou:** a espera interna de 15 s, o limite global do Vitest e o código da API e do worker.
+  - **Comprovação:** com o limite global reduzido a 1 s pela linha de comando, os três testes passaram. O limite por teste,
+    portanto, é aplicado.
+
+### Documentação
+- **`CLAUDE.md`:**
+  - descreve os dois projetos do repositório (MVP na raiz, SaaS em `saas/`);
+  - tem nova seção sobre o monorepo: estrutura, comandos de desenvolvimento, testes, typecheck e build, e regras de código;
+  - as seções do MVP passaram a ter "do MVP" no título.
+- **`CLAUDE.md`, regras obrigatórias novas:**
+  - separação entre MVP e SaaS;
+  - proibição de conectar serviços reais ou modificar a VPS sem autorização;
+  - consulta e atualização da documentação a cada fase;
+  - testes e builds dos dois projetos antes de concluir;
+  - nomes de teste `.spec` no SaaS.
+- **`docs/DISPARAZAP_MASTER.md`:** Fase 4 registrada em commit; `CLAUDE.md` atualizado.
+
+### Verificações antes do commit (depois da correção)
+Todas passaram na primeira tentativa de cada rodada, sem repetição.
+
+| Verificação | Resultado |
+|---|---|
+| Testes de processo isolados, 3 rodadas | 3/3 em cada; a API levou 4,1 s, 3,1 s e 7,6 s para subir |
+| Suíte completa do SaaS, 3 rodadas | 59/59 em cada; a API levou 11,1 s, 12,4 s e 11,6 s |
+| Processos filhos dos testes | Nenhum ativo depois de cada rodada |
+| `npm run typecheck` | 0 erros |
+| `build:api`, `build:worker`, `build:web`, `build` | Concluídos |
+| MVP, `npm test` | 42/42, sem executar testes do SaaS |
+| Arquivos do MVP | Mesmo hash de antes do encerramento |
+| Varredura de segredos | Sem ocorrências nos arquivos versionados |
+
+### Observações
+- **Correção do relatório da Fase 4:** o processo do worker compilado, iniciado no teste manual da Fase 4
+  (`npm run start -w @disparazap/worker`), ficou ativo desde 2026-10-31.
+  - Naquele dia só as portas foram conferidas, e o worker não abre porta.
+  - Foi detectado nesta verificação. Não acessa rede nem dados.
+  - O encerramento ficou a cargo do usuário, porque a ferramenta não teve permissão para encerrar processos.
+- **Margem dos testes de processo:**
+  - nas rodadas da suíte completa, a máquina estava com CPU em 100% e pouca memória livre, por causa de outros programas;
+  - a subida da API (até 12,4 s) ficou perto da espera interna de 15 s;
+  - se voltar a falhar, a mensagem indicará a espera esgotada;
+  - medida possível: rodar os testes de processo num projeto Vitest separado e sequencial.
+
+---
+
+## 2026-10-31 — Fase 4: fundação técnica do SaaS
+
+Tudo novo está em `saas/`. O MVP não foi alterado (`server.js`, `index.html`, `phone.js`, `tests/`, `package.json`/lock e
+`.gitignore` da raiz intactos). Nenhuma conexão com Evolution Go, Zernio, MyLinksss, banco ou Redis. Nada instalado no sistema;
+nenhum serviço Docker iniciado. Registrada em commit local em 2026-11-01, depois da correção de um teste intermitente (entrada acima).
+
+### Adicionado
+- `saas/`: monorepo npm workspaces (lockfile próprio) com `apps/api`, `apps/web`, `apps/worker`, `packages/contracts`, `packages/shared`.
+- **API (Fastify 5):**
+  - configuração validada com Zod;
+  - escuta em `127.0.0.1:3100` por padrão;
+  - `GET /health/live`;
+  - prefixo `/api/v1` reservado, sem rotas;
+  - erros centralizados em RFC 9457, sem stack;
+  - logs pino sem cabeçalhos nem query string, com redação;
+  - CORS por lista explícita (vazia por padrão);
+  - cabeçalhos de segurança;
+  - encerramento controlado.
+- **Painel (React 19 + Vite 8 + React Router 8):**
+  - identidade visual, menu lateral responsivo com as 9 seções e cabeçalho com "Em construção";
+  - Visão Geral com status real da API e lista de módulos;
+  - página "Em desenvolvimento" para os 8 módulos;
+  - página 404;
+  - sem login nem dados fictícios;
+  - permissão declarada por item do menu.
+- **Worker:** inicialização independente, configuração validada, ciclo de vida, registro de filas vazio, encerramento controlado.
+  Sem Redis, sem tarefas.
+- **Pacotes:** `contracts` (health check e erro RFC 9457) e `shared` (`parseEnv`, logger com redação, `handleShutdownSignals`).
+- **Testes:** 59 testes Vitest (pacotes, API com `inject` e processo real, worker, painel em jsdom), todos aprovados.
+- **Documentação:** `saas/README.md`, `saas/docs/ESTRUTURA_TECNICA.md`, `saas/docs/DECISOES_TECNICAS.md`, `saas/infra/docker/README.md`.
+- `saas/.env.example` (só valores padrão) e `saas/.gitignore` (`dist/`, `*.tsbuildinfo`, `.env*`).
+
+### Verificações
+- TypeScript (`npm run typecheck`): 0 erros em pacotes, API, worker, painel e arquivos de teste.
+- Builds de API, worker (`tsc -b`) e painel (`vite build`) concluídos.
+- Os três processos iniciaram de forma independente; o painel consultou a API pelo proxy do Vite.
+- `npm test` da raiz (MVP): 42/42, sem executar testes do SaaS.
+- `npm audit` do SaaS: 0 vulnerabilidades.
+
+### Observações
+- O Node 24 está em Maintenance LTS desde 2026-10-20; o Node 26 virou Active LTS em 2026-10-28. A máquina usa 24.17.0 (o mais recente é 24.22.2).
+- O worker passou a ser aplicação própria (`apps/worker`), diferente do previsto na ARQUITETURA_SAAS §3.3.
+- Pendências: ESLint/Prettier; Docker Compose. O `CLAUDE.md` foi atualizado no encerramento da fase (2026-11-01).
+
+---
+
 ## 2026-10-31 — Fase 3: git, preservação e correções de segurança do MVP
 
 Nenhum envio real, nenhuma instância criada, nenhum acesso à VPS. Registrado em dois commits locais autorizados (seção Git).

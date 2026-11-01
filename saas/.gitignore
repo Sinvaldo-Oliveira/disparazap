@@ -1,0 +1,13 @@
+# Saídas de build
+dist/
+*.tsbuildinfo
+
+# Configuração local — nunca versionar
+.env
+.env.*
+!.env.example
+
+# Testes, logs e caches
+coverage/
+*.log
+.vite/
