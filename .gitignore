@@ -1,2 +1,26 @@
+# Dependências
 node_modules/
+
+# Credenciais e configuração local — nunca versionar
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Logs
+*.log
+npm-debug.log*
+logs/
+
+# Cópias de preservação locais (podem conter dados do ambiente)
+backup/
+
+# Artefatos de teste e sistema
+coverage/
+.tmp/
+Thumbs.db
+.DS_Store

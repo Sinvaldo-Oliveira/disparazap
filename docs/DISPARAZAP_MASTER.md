@@ -6,7 +6,7 @@
 
 | | |
 |---|---|
-| **Fase atual** | MVP local (disparador de texto via Evolution Go) |
+| **Fase atual** | MVP local (disparador de texto via Evolution Go) com correções de segurança da Fase 3 ([SEGURANCA_MVP.md](SEGURANCA_MVP.md)); git local com o original (`908ca2f`) e as correções em commits próprios |
 | **Próxima fase** | Fase 2 — arquitetura do SaaS **proposta, aguardando aprovação** ([ARQUITETURA_SAAS.md](ARQUITETURA_SAAS.md)) |
 | **Hospedagem** | VPS Hostinger ([PLANO_IMPLANTACAO_HOSTINGER.md](PLANO_IMPLANTACAO_HOSTINGER.md)) |
 | **Última atualização** | 2026-10-31 |
@@ -28,6 +28,7 @@ outras plataformas (como a MyLinksss).
 | [`docs/AUDITORIA_INICIAL.md`](AUDITORIA_INICIAL.md) | Retrato do projeto em 2026-10-31: o que existe e o que falta | Não atualizar; é um registro histórico (errata do `.env.example` em ARQUITETURA_SAAS §1.1) |
 | [`docs/ARQUITETURA_SAAS.md`](ARQUITETURA_SAAS.md) | Diagnóstico de segurança, stack, autenticação, multi-tenancy, modelo de dados e plano incremental do SaaS | Quando a arquitetura mudar ou uma decisão D1–D10 for tomada |
 | [`docs/PLANO_IMPLANTACAO_HOSTINGER.md`](PLANO_IMPLANTACAO_HOSTINGER.md) | Containers, rede, HTTPS, segredos, backup, monitoramento, deploy e homologação na VPS | Quando a infraestrutura mudar ou uma decisão I1–I7 for tomada |
+| [`docs/SEGURANCA_MVP.md`](SEGURANCA_MVP.md) | Correções de segurança do MVP, regra de telefone, riscos pendentes, proposta de limites de envio, testes e reversão | A cada mudança de segurança no MVP |
 | [`docs/CHANGELOG_DESENVOLVIMENTO.md`](CHANGELOG_DESENVOLVIMENTO.md) | Registro cronológico das alterações | A cada alteração de código ou documentação |
 | [`doc_evolution_go.md`](../doc_evolution_go.md) | Referência da API Evolution Go | Quando a API mudar |
 
@@ -38,7 +39,7 @@ outras plataformas (como a MyLinksss).
 | Módulo | Escopo | Situação |
 |---|---|---|
 | **Painel SaaS** | Super Admin, Empresas, Usuários, papéis e permissões | 📐 Arquitetura proposta |
-| **WhatsApp** | Evolution Go: instâncias, QR Code/pareamento, status, envio e recebimento | 🟨 Parcial (listar instâncias + enviar texto) |
+| **WhatsApp** | Evolution Go: instâncias, QR Code/pareamento, status, envio e recebimento | 🟨 Parcial (listar instâncias + enviar texto, com TLS verificado) |
 | **Redes sociais** | Zernio, conectada por conta de usuário (Instagram, Facebook, TikTok) | ⬜ Não iniciado |
 | **Agentes de IA** | Personalidade, base de conhecimento e regras de atendimento | ⬜ Não iniciado |
 | **Automações** | Campanhas, filas, agendamentos e acompanhamentos (follow-ups) | 🟨 Parcial (campanha manual no navegador) |
@@ -153,6 +154,12 @@ Navegador (index.html)                 Servidor local (server.js)            Evo
 | 2026-10-31 | Topologia do Evolution Go na VPS será **verificada, nunca presumida**; endpoints só são implementados após confirmação na versão instalada | Evitar integração construída sobre suposições |
 | 2026-10-31 | O SaaS é independente e se integra à MyLinksss **apenas por API REST e webhooks**; a MyLinksss não é modificada | Baixo acoplamento entre produtos |
 | 2026-10-31 | Zernio e agentes de IA ficam **fora do primeiro MVP SaaS** (apenas planejados) | Priorizar a fundação |
+| 2026-10-31 | Repositório **git local**, sem remoto; commits só com aprovação; estado original em commit próprio (`908ca2f`) + cópia em `backup/` | Versionar sem expor nada e sem perder o original |
+| 2026-10-31 | MVP escuta só em `127.0.0.1` (`HOST` opcional) | O dono do produto confirmou uso exclusivo nesta máquina; o MVP não tem login |
+| 2026-10-31 | Verificação TLS obrigatória com o Evolution; certificado próprio só via `EVOLUTION_CA_FILE` | Certificado real verificado (Let's Encrypt, válido até 2027-01-14) |
+| 2026-10-31 | Respostas ao navegador por **lista de campos permitidos** | A lista de proibidos deixava passar campos aninhados e credenciais de proxy |
+| 2026-10-31 | Regra de telefone explícita em `phone.js`: sem `+` só Brasil (55); outros países com `+`; nunca acrescenta DDI | Evitar envio ao destinatário errado |
+| 2026-10-31 | Testes versionados com `node:test` (+ jsdom e SheetJS 0.20.3 oficial como dependências de desenvolvimento) | Recomendação Q2 da auditoria |
 
 ## 10. Decisões pendentes
 
@@ -164,7 +171,9 @@ Estas decisões precisam ser tomadas antes de iniciar o SaaS. As recomendações
 - [ ] Topologia do Evolution Go na VPS (depende do levantamento I1) e servidor compartilhado ou por empresa (D4)
 - [ ] Stack do SaaS (D1), local do código (D2), autenticação (D3), fila (D5)
 - [ ] Política de consentimento (D6) e campanha de teste obrigatória (D7)
-- [ ] Correções rápidas de segurança no MVP (D8)
+- [x] Correções rápidas de segurança no MVP (D8) — V1, V2, V3, V7 e `.env.example` em 2026-10-31 ([SEGURANCA_MVP.md](SEGURANCA_MVP.md))
+- [x] Commits locais do estado original (`908ca2f`) e das correções da Fase 3 (2026-10-31)
+- [ ] Limites de envio no servidor (propostas P1–P5) e correções pendentes V6, V8, V9 ([SEGURANCA_MVP §5–6](SEGURANCA_MVP.md#5-riscos-pendentes))
 - [ ] Domínio, tamanho das VPS, backup externo, CI e monitoramento (I2–I7)
 - [ ] Planos, limites e cobrança
 - [ ] Operações necessárias da Zernio, confirmadas na documentação oficial
@@ -179,7 +188,7 @@ Estas decisões precisam ser tomadas antes de iniciar o SaaS. As recomendações
 
 | # | Etapa | # | Etapa |
 |---|---|---|---|
-| 0 | Base: git + correções de segurança do MVP | 6 | Conexão segura com o Evolution Go |
+| 0 | Base: git + correções de segurança do MVP — **concluída em 2026-10-31** | 6 | Conexão segura com o Evolution Go |
 | 1 | Fundação técnica (`saas/`, TS, Compose, testes) | 7 | Instâncias e QR Code |
 | 2 | Autenticação e Super Admin | 8 | Contatos autorizados (consentimento) |
 | 3 | Empresas e membros | 9 | Fila persistente, histórico e campanhas de teste |

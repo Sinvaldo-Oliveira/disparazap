@@ -2,9 +2,67 @@
 
 Registro cronológico das alterações no projeto, da mais recente para a mais antiga.
 
-**Como registrar:** uma entrada por dia de trabalho, com data absoluta (`AAAA-MM-DD`) e itens agrupados em
+**Como registrar:** uma entrada por dia ou fase de trabalho, com data absoluta (`AAAA-MM-DD`) e itens agrupados em
 **Adicionado**, **Alterado**, **Corrigido**, **Segurança**, **Documentação**. Diga o que mudou e por quê, citando os arquivos.
 Nunca registre senhas, tokens, chaves, URLs privadas de servidores ou dados pessoais reais.
+
+---
+
+## 2026-10-31 — Fase 3: git, preservação e correções de segurança do MVP
+
+Nenhum envio real, nenhuma instância criada, nenhum acesso à VPS. Registrado em dois commits locais autorizados (seção Git).
+Detalhes, riscos pendentes e reversão em `docs/SEGURANCA_MVP.md`.
+
+### Git
+- `908ca2f` `chore: preserve original DisparaZap MVP`: estado anterior à Fase 3 (12 arquivos), comprovado igual à cópia de preservação.
+- Commit seguinte `fix: harden DisparaZap MVP security`: tudo o que está nesta entrada.
+- **Correção:** o relatório da Fase 3 e a primeira versão destes documentos diziam que o original foi preparado no índice antes de
+  qualquer mudança, mas o `.gitignore` já tinha sido revisado. A divergência foi detectada na verificação anterior ao commit.
+  Com autorização, a entrada do `.gitignore` no índice foi trocada pela versão da cópia de preservação.
+
+### Adicionado
+- Repositório **git local** (`main`, sem remoto).
+- Cópia de preservação em `backup/estado-original-2026-10-31/` com `MANIFESTO.sha256` (sem `.env`; ignorada pelo git).
+- `phone.js`: regra única de telefone (formato internacional; sem `+` só Brasil; nunca acrescenta DDI), usada pelo servidor
+  e pelo navegador; servida em `GET /phone.js`.
+- `tests/`: 42 testes `node:test`:
+  - telefone;
+  - servidor contra Evolution simulado, incluindo TLS com certificado gerado na hora;
+  - interface completa em jsdom.
+
+  Script `npm test`. Dependências **só de desenvolvimento**: `jsdom` e SheetJS 0.20.3 (pacote oficial da SheetJS).
+- `.env.example` recriado, com `HOST` e `EVOLUTION_CA_FILE` opcionais.
+- `docs/SEGURANCA_MVP.md`.
+
+### Segurança
+- `server.js`:
+  - escuta em `127.0.0.1` por padrão (uso exclusivo nesta máquina confirmado pelo dono do produto);
+  - verificação TLS obrigatória (`rejectUnauthorized: true` explícito), com `EVOLUTION_CA_FILE` opcional;
+  - redirects só para o mesmo host e nunca de HTTPS para HTTP;
+  - respostas por lista de campos permitidos (`{ name, connected }` e `{ ok, messageId }`);
+  - erros do Evolution reduzidos a texto curto e erros de rede/TLS com mensagens fixas, sem URL;
+  - telefone revalidado no servidor;
+  - mensagem clara para `HOST` inválido.
+- Certificado do Evolution real conferido **só por handshake TLS** (autorizado): Let's Encrypt, válido até 2027-01-14.
+
+### Alterado
+- `index.html`:
+  - validação de telefone pela regra de `phone.js`, com mensagem do motivo;
+  - importação Excel informa os motivos das linhas ignoradas;
+  - detecção de coluna de telefone por "parece telefone";
+  - textos de ajuda sobre DDI.
+- `.gitignore`: `.env.*` (exceto `.env.example`), chaves/certificados, logs, `backup/`, `coverage/`.
+- `package.json`: script `test`, `engines` (Node ≥ 22), dependências de desenvolvimento.
+- `CLAUDE.md`:
+  - variáveis `HOST`/`EVOLUTION_CA_FILE`;
+  - arquivos `phone.js`/`tests/`;
+  - regras de TLS, rede, git e testes;
+  - remoção da instrução antiga de aceitar certificado autoassinado;
+  - regra de telefone.
+- `docs/DISPARAZAP_MASTER.md`: decisões da Fase 3, pendências e etapa 0 do roteiro.
+
+### Pendente (proposto, não implementado)
+- Limites de envio no servidor (P1–P5), validação de `Host` (V6), SRI na CDN (V8), cabeçalhos de segurança (V9).
 
 ---
 

@@ -6,6 +6,7 @@
 <title>DisparaZap — Disparador WhatsApp</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>">
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
+<script src="/phone.js"></script>
 <style>
   :root {
     --green: #25d366;
@@ -431,10 +432,10 @@
     <div id="tab-manual" class="tab-panel">
       <div class="manual-grid">
         <input type="text" id="contactName" placeholder="Nome" aria-label="Nome do contato">
-        <input type="tel" id="contactPhone" placeholder="Telefone com DDI — ex: 5511999999999" aria-label="Telefone com DDI" inputmode="numeric">
+        <input type="tel" id="contactPhone" placeholder="Telefone com DDI — ex: 5511988887777" aria-label="Telefone com DDI" inputmode="tel">
         <button type="button" class="btn primary" id="btnAddContact">+ Adicionar</button>
       </div>
-      <small class="muted">Informe DDI + DDD + número (mínimo 10 dígitos). Pressione Enter no telefone para adicionar.</small>
+      <small class="muted">Formato internacional: 55 + DDD + número (ex.: 5511988887777). Outros países: comece com + e o DDI. Pressione Enter no telefone para adicionar.</small>
     </div>
 
     <div id="tab-excel" class="tab-panel hidden">
@@ -442,6 +443,7 @@
         <div class="dz-icon">📄</div>
         <strong>Arraste a planilha aqui</strong>
         <span>ou clique para escolher um arquivo .xlsx ou .xls</span>
+        <small>Os telefones precisam ter DDI — 55 para o Brasil (ex.: 5511988887777)</small>
       </div>
       <input type="file" id="fileInput" accept=".xlsx,.xls" hidden>
 
@@ -655,9 +657,13 @@
   const randInt = (min, max) => Math.floor(min + Math.random() * (max - min + 1));
   const letter = (i) => String.fromCharCode(65 + i);
 
-  function normalizePhone(raw) {
-    const digits = String(raw ?? '').replace(/\D/g, '');
-    return digits.length >= 10 && digits.length <= 15 ? digits : null;
+  // Regra única de telefone, compartilhada com o servidor (phone.js)
+  const checkPhone = (raw) => DisparaZapPhone.validatePhone(raw);
+
+  // Só para achar a coluna/cabeçalho no Excel: 8+ dígitos e nenhuma letra. A validação real é checkPhone.
+  function looksLikePhone(value) {
+    const text = cellToString(value);
+    return !/[a-zà-ú]/i.test(text) && text.replace(/\D/g, '').length >= 8;
   }
 
   // Números grandes do Excel viram string sem notação científica
@@ -865,12 +871,13 @@
 
   function addManualContact() {
     const name = $('contactName').value.trim();
-    const phone = normalizePhone($('contactPhone').value);
-    if (!phone) {
-      toast('Telefone inválido — use DDI + DDD + número (ex: 5511999999999)', 'error');
+    const check = checkPhone($('contactPhone').value);
+    if (!check.ok) {
+      toast(`Telefone inválido: ${check.error}`, 'error', 6000);
       $('contactPhone').focus();
       return;
     }
+    const phone = check.number;
     if (state.contacts.some((c) => c.phone === phone)) {
       toast('Este número já está na lista', 'warn');
       $('contactPhone').focus();
@@ -933,7 +940,7 @@
 
   // Se a 1ª linha já tem um telefone válido, ela é dado — senão é cabeçalho
   function detectHeader(rows) {
-    return !(rows[0] || []).some((c) => normalizePhone(cellToString(c)));
+    return !(rows[0] || []).some(looksLikePhone);
   }
 
   function detectColumns() {
@@ -948,7 +955,7 @@
     if (phone < 0) {
       let best = 0;
       for (let c = 0; c < ex.ncols; c++) {
-        const score = sample.filter((r) => normalizePhone(cellToString(r[c]))).length;
+        const score = sample.filter((r) => looksLikePhone(r[c])).length;
         if (score > best) { best = score; phone = c; }
       }
     }
@@ -1003,7 +1010,7 @@
       $('excelValidHint').textContent = 'Selecione a coluna do telefone';
     } else {
       const dataRows = ex.rows.slice(start);
-      const valid = dataRows.filter((r) => normalizePhone(cellToString(r[ex.colPhone]))).length;
+      const valid = dataRows.filter((r) => checkPhone(cellToString(r[ex.colPhone])).ok).length;
       $('excelValidHint').textContent = `${valid} de ${dataRows.length} linha(s) com telefone válido`;
     }
     $('btnImport').disabled = ex.colPhone < 0;
@@ -1013,11 +1020,17 @@
     const ex = state.excel;
     if (!ex || ex.colPhone < 0) return;
     const existing = new Set(state.contacts.map((c) => c.phone));
+    const reasons = {};
     let added = 0, ignored = 0, duplicated = 0;
 
     for (const row of ex.rows.slice(ex.hasHeader ? 1 : 0)) {
-      const phone = normalizePhone(cellToString(row[ex.colPhone]));
-      if (!phone) { ignored++; continue; }
+      const check = checkPhone(cellToString(row[ex.colPhone]));
+      if (!check.ok) {
+        ignored++;
+        reasons[check.reason] = (reasons[check.reason] || 0) + 1;
+        continue;
+      }
+      const phone = check.number;
       if (existing.has(phone)) { duplicated++; continue; }
       existing.add(phone);
       state.contacts.push({ name: ex.colName >= 0 ? cellToString(row[ex.colName]) : '', phone });
@@ -1025,8 +1038,9 @@
     }
 
     renderContacts();
-    log('sys', `Importação de "${ex.fileName}": ${added} contato(s) adicionado(s), ${ignored} linha(s) ignorada(s) sem telefone válido` +
-      (duplicated ? `, ${duplicated} duplicado(s)` : ''));
+    const detail = Object.entries(reasons).map(([reason, n]) => `${n} ${reason}`).join(', ');
+    log('sys', `Importação de "${ex.fileName}": ${added} contato(s) adicionado(s), ${ignored} linha(s) ignorada(s)` +
+      (detail ? ` (${detail})` : '') + (duplicated ? `, ${duplicated} duplicado(s)` : ''));
     toast(`${added} contato(s) importado(s)` + (ignored ? ` · ${ignored} ignorado(s)` : '') + (duplicated ? ` · ${duplicated} duplicado(s)` : ''));
     resetExcel();
   }

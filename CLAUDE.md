@@ -2,7 +2,7 @@
 
 Aplicação de disparos em massa via WhatsApp usando a API do Evolution Go. Servidor Node.js local que atua como proxy para a API externa, com frontend HTML/CSS/JS puro.
 
-**Fase atual:** MVP local. O projeto vai evoluir para um painel SaaS multiempresa (WhatsApp, redes sociais via Zernio, agentes de IA, automações, API REST + webhooks). A visão e as decisões estão em `docs/DISPARAZAP_MASTER.md`.
+**Fase atual:** MVP local, com correções de segurança da Fase 3 (ver `docs/SEGURANCA_MVP.md`) e repositório git **local**. O projeto vai evoluir para um painel SaaS multiempresa (WhatsApp, redes sociais via Zernio, agentes de IA, automações, API REST + webhooks). A visão e as decisões estão em `docs/DISPARAZAP_MASTER.md`.
 
 ---
 
@@ -16,6 +16,7 @@ Aplicação de disparos em massa via WhatsApp usando a API do Evolution Go. Serv
 | `docs/CHANGELOG_DESENVOLVIMENTO.md` | Registro cronológico de todas as alterações |
 | `docs/ARQUITETURA_SAAS.md` | Arquitetura proposta do SaaS, modelo de dados e plano incremental (aguardando aprovação) |
 | `docs/PLANO_IMPLANTACAO_HOSTINGER.md` | Plano de infraestrutura na VPS Hostinger (aguardando aprovação) |
+| `docs/SEGURANCA_MVP.md` | Correções de segurança do MVP, regra de telefone, riscos pendentes e propostas |
 | `doc_evolution_go.md` | Referência da API Evolution Go |
 
 ## Regras obrigatórias
@@ -25,6 +26,10 @@ Aplicação de disparos em massa via WhatsApp usando a API do Evolution Go. Serv
 - **Não implemente módulos do SaaS** (login, empresas, banco, Zernio, IA, API pública) sem um plano aprovado pelo dono do produto.
 - **A cada alteração**, registre uma entrada em `docs/CHANGELOG_DESENVOLVIMENTO.md`; a cada decisão de produto ou arquitetura, atualize `docs/DISPARAZAP_MASTER.md`.
 - A Zernio é uma integração **independente** do Evolution Go. Não presuma o que ela suporta: confirme na documentação oficial antes de planejar.
+- **Nunca desligue a verificação TLS** (`rejectUnauthorized: false`, `NODE_TLS_REJECT_UNAUTHORIZED=0`) para contornar erro de certificado. Certificado próprio → `EVOLUTION_CA_FILE`.
+- **Não mude a escuta para fora de `127.0.0.1`** no código: o MVP não tem login. Quem precisar de rede usa `HOST` no `.env`, ciente do risco.
+- **Git:** repositório só local. Nunca faça commit, push, remoto ou deploy sem aprovação explícita; nunca versione `.env`, `backup/` ou chaves.
+- **Testes:** `npm test` antes de concluir qualquer mudança de código. Os testes usam só o Evolution simulado — nunca instâncias reais nem envios reais.
 
 ---
 
@@ -46,6 +51,8 @@ Copie `.env.example` para `.env` e preencha os valores:
 | `EVOLUTION_URL` | URL base do servidor Evolution Go (sem barra no final) |
 | `GLOBAL_API_KEY` | Chave API global — nunca exposta ao browser |
 | `PORT` | Porta local do servidor (padrão: `3000`) |
+| `HOST` | Opcional. Endereço de escuta (padrão: `127.0.0.1`, só esta máquina). Outro valor expõe o disparador na rede **sem login** |
+| `EVOLUTION_CA_FILE` | Opcional. PEM de autoridade certificadora extra, se o Evolution usar certificado próprio; a verificação TLS continua obrigatória |
 
 ---
 
@@ -56,6 +63,7 @@ cp .env.example .env   # preencha com suas credenciais
 npm install
 npm start              # ou: npm run dev (reinicia sozinho ao salvar o server.js)
 # Acesse http://localhost:3000
+npm test               # testes contra o Evolution simulado (nenhum envio real)
 ```
 
 - O site só funciona com o servidor ligado: fechar o terminal derruba a página (`ERR_CONNECTION_REFUSED`).
@@ -67,10 +75,13 @@ npm start              # ou: npm run dev (reinicia sozinho ao salvar o server.js
 
 | Arquivo | Papel |
 |---|---|
-| `server.js` | Proxy reverso + servidor estático |
+| `server.js` | Proxy para o Evolution Go + entrega de `index.html` e `phone.js` |
 | `index.html` | Toda a UI e lógica do frontend (HTML + CSS + JS inline) |
+| `phone.js` | Regra única de validação de telefone, usada pelo servidor (`require`) e pelo navegador (`/phone.js`) |
+| `tests/` | Testes `node:test`: telefone, servidor (com Evolution simulado e TLS) e interface (jsdom) |
 | `.env` | Credenciais reais — nunca commitado |
-| `.env.example` | Modelo com os nomes das variáveis — commitado |
+| `.env.example` | Modelo com os nomes das variáveis — commitado (copie, não renomeie) |
+| `backup/` | Cópias de preservação locais — ignoradas pelo git |
 | `doc_evolution_go.md` | Documentação completa da API Evolution Go |
 
 ---
@@ -153,13 +164,13 @@ O frontend é um wizard de 5 etapas com stepper visual animado.
 
 ### Etapa 2 — Contatos
 - **Aba Manual**: adiciona contatos um a um (Nome + Telefone com DDI)
-  - Validação: mínimo 10 dígitos numéricos, DDI obrigatório (ex: `5511999999999`)
+  - Validação pela regra de `phone.js` (detalhes em `docs/SEGURANCA_MVP.md`): formato internacional; sem `+` só Brasil (`55` + DDD válido + 8 ou 9 dígitos); outros países com `+`; recusa sem DDI, zero inicial, caracteres inválidos e números concatenados — nunca acrescenta DDI
   - Enter no campo de telefone dispara o botão Adicionar
 - **Aba Excel**: importa planilha `.xlsx` ou `.xls` via drag-and-drop ou clique
   - Detecção automática das colunas de telefone e nome por expressão regular
   - Preview das primeiras 6 linhas antes de confirmar a importação
   - Seletor de colunas configurável antes de importar
-  - Linhas sem telefone válido são ignoradas (contagem de ignorados informada no log)
+  - Linhas sem telefone válido são ignoradas; o log informa a contagem e o motivo (ex.: `3 sem DDI, 1 vazio`)
 - Tabela de contatos com número de linha e botão de remoção individual
 - Botão **🗑 Limpar** remove todos os contatos (com confirmação)
 - Badge com contagem total de contatos
@@ -201,8 +212,8 @@ O frontend é um wizard de 5 etapas com stepper visual animado.
 
 | Rota local | Proxy para | Auth header | Descrição |
 |---|---|---|---|
-| `GET /api/instances` | `GET {EVOLUTION_URL}/instance/all` | `GLOBAL_API_KEY` (só no servidor) | Lista todas as instâncias |
-| `POST /api/send/text` | `POST {EVOLUTION_URL}/send/text` | token da instância (vem do frontend) | Envia mensagem de texto |
+| `GET /api/instances` | `GET {EVOLUTION_URL}/instance/all` | `GLOBAL_API_KEY` (só no servidor) | Lista instâncias. Responde só `{ data: [{ name, connected }] }` |
+| `POST /api/send/text` | `POST {EVOLUTION_URL}/send/text` | token da instância (vem do frontend) | Envia texto. Responde só `{ ok, messageId }` ou `{ error }` |
 
 Payload de envio enviado ao Evolution Go:
 ```json
@@ -216,16 +227,19 @@ Consulte `doc_evolution_go.md` para todos os 79 endpoints disponíveis.
 ## Decisões técnicas
 
 - `proxyFetch` em `server.js` usa módulos nativos do Node (`http`/`https`) — sem `node-fetch`
-- Segue redirects HTTP → HTTPS automaticamente (até 5 saltos); POST vira GET em 302/303
-- `httpsAgent` com `rejectUnauthorized: false` para aceitar certificado autoassinado do servidor
+- Segue redirects (até 5 saltos) **só para o mesmo host e nunca de HTTPS para HTTP**, porque a chave vai no header; POST vira GET em 302/303
+- `httpsAgent` com `rejectUnauthorized: true` explícito: certificado do Evolution sempre verificado, mesmo com `NODE_TLS_REJECT_UNAUTHORIZED=0`. `EVOLUTION_CA_FILE` só acrescenta uma autoridade às padrão
+- Servidor escuta em `127.0.0.1` por padrão (`HOST` no `.env` muda isso, com aviso no console)
 - `GLOBAL_API_KEY` nunca chega ao browser — toda autenticação administrativa é feita no servidor
+- Erros de rede/TLS viram mensagens fixas (sem URL nem detalhes internos); erros do Evolution são reduzidos a um texto curto — o corpo original nunca é repassado
+- Validação de telefone única em `phone.js` (padrão UMD), aplicada no navegador e de novo no servidor
 - Tokens de instância salvos no `localStorage` com chave `token:{nome-instancia}`
 - Disparo é um loop `async/await` com flag `stopRequested` para interrupção limpa (sem Promise.race nem AbortController)
 - Log limitado a 500 entradas para evitar degradação de performance em listas muito grandes
 - Escape de HTML em todos os dados exibidos no log (`esc()`) para evitar XSS
 - O frontend envia o token da instância no header `X-Instance-Token`; o servidor o repassa como `apikey`
-- O servidor serve só `GET /` → `index.html` (sem `express.static(__dirname)`, que exporia `.env`, `server.js` e `node_modules`)
-- `GET /api/instances` remove campos sensíveis (`token`, `apikey`…) de cada instância antes de responder
+- O servidor serve só `GET /` → `index.html` e `GET /phone.js` (sem `express.static(__dirname)`, que exporia `.env`, `server.js` e `node_modules`)
+- `GET /api/instances` usa **lista de campos permitidos** (`toPublicInstance`): só `name` e `connected` saem; token, jid, qrcode, proxy e objetos aninhados nunca chegam ao navegador
 - Erro `not authorized` (ou HTTP 401) no envio interrompe o disparo na hora, para não falhar contato por contato
 
 ---
@@ -251,9 +265,9 @@ Consulte `doc_evolution_go.md` para todos os 79 endpoints disponíveis.
 
 ## Ao fazer mudanças
 
-- Fase de MVP: editar apenas `index.html` para mudanças de UI/UX ou lógica do frontend e apenas `server.js` para proxy, rotas ou autenticação (esta regra será revista quando a arquitetura do SaaS for aprovada)
-- Não criar arquivos desnecessários — manter a estrutura mínima (a pasta `docs/` é parte da estrutura)
-- Antes de concluir: rodar o servidor e verificar o fluxo completo
+- Fase de MVP: `index.html` para UI/UX e lógica do frontend; `server.js` para proxy e rotas; `phone.js` para a regra de telefone (esta regra será revista quando a arquitetura do SaaS for aprovada)
+- Não criar arquivos desnecessários — manter a estrutura mínima (`docs/` e `tests/` fazem parte da estrutura)
+- Respostas ao navegador: sempre por lista de campos permitidos, nunca repassando o corpo do Evolution
+- Antes de concluir: `npm test` + rodar o servidor e verificar o fluxo completo
 - Registrar a alteração em `docs/CHANGELOG_DESENVOLVIMENTO.md`
 - Nunca expor `GLOBAL_API_KEY` em respostas de API ou logs do browser
-- O projeto ainda não tem git; ver recomendações em `docs/AUDITORIA_INICIAL.md`
