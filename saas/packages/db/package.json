@@ -1,0 +1,29 @@
+{
+  "name": "@disparazap/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Banco de dados do DisparaZap: schema Drizzle, migrations e conexão (PostgreSQL ou banco embutido)",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "generate": "drizzle-kit generate",
+    "check": "drizzle-kit check",
+    "migrate": "drizzle-kit migrate"
+  },
+  "devDependencies": {
+    "@types/pg": "8.23.1",
+    "drizzle-kit": "0.31.11"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "0.5.14",
+    "drizzle-orm": "0.45.4",
+    "pg": "8.23.1"
+  }
+}

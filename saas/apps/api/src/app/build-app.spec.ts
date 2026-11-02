@@ -1,9 +1,18 @@
 import { Writable } from 'node:stream';
 import type { FastifyInstance } from 'fastify';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { healthLiveSchema, PROBLEM_CONTENT_TYPE, problemDetailsSchema } from '@disparazap/contracts';
 import { loadApiConfig } from '../config/env.ts';
 import { buildApp } from './build-app.ts';
+
+// Aquecimento: a primeira montagem do Fastify no processo é bem mais lenta (inicializações preguiçosas).
+// Sozinha leva ~1 s, mas com a suíte inteira em paralelo e a CPU cheia passou de 5 s (medido em 2026-11-01).
+// Os testes abaixo verificam o comportamento, não esse custo único.
+beforeAll(async () => {
+  const warmup = await buildApp(loadApiConfig({ LOG_LEVEL: 'silent' }));
+  await warmup.ready();
+  await warmup.close();
+}, 60_000);
 
 const apps: FastifyInstance[] = [];
 afterEach(async () => {

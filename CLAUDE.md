@@ -5,7 +5,7 @@ Aplicação de disparos em massa via WhatsApp usando a API do Evolution Go. O re
 - **MVP** (raiz): servidor Node.js local que atua como proxy para a API externa, com frontend HTML/CSS/JS puro. É o que está em uso.
 - **SaaS** (`saas/`): fundação técnica do futuro painel multiempresa. Tem API, painel web e worker em TypeScript, ainda **sem funcionalidades de negócio**.
 
-**Fase atual:** MVP local com as correções de segurança da Fase 3 (ver `docs/SEGURANCA_MVP.md`) e fundação técnica do SaaS concluída na Fase 4 (ver `saas/docs/ESTRUTURA_TECNICA.md`). Repositório git **local**. Próxima fase: Fase 5 (banco de dados, autenticação e Super Admin), que **só começa com autorização**. O SaaS vai reunir WhatsApp, redes sociais via Zernio, agentes de IA, automações e API REST + webhooks; a visão e as decisões estão em `docs/DISPARAZAP_MASTER.md`.
+**Fase atual:** MVP local com as correções de segurança da Fase 3 (ver `docs/SEGURANCA_MVP.md`) e fundação técnica do SaaS concluída na Fase 4 (ver `saas/docs/ESTRUTURA_TECNICA.md`). Repositório git com remoto `origin` no GitHub (`Sinvaldo-Oliveira/disparazap`), desde 2026-11-01. Fase 5 (banco de dados, autenticação e Super Admin) **em andamento**: a autenticação, a integração global com a Evolution Go, o módulo WhatsApp das empresas, o Envio de Mensagens e a página Contatos estão implementados (2026-11-01, banco embutido; testes com a Evolution simulada); a conclusão da homologação real do WhatsApp, a conexão ao Supabase e a entrada pelo MyLinksss dependem de autorização. O SaaS vai reunir WhatsApp, redes sociais via Zernio, agentes de IA, automações e API REST + webhooks; a visão e as decisões estão em `docs/DISPARAZAP_MASTER.md`.
 
 ---
 
@@ -23,7 +23,9 @@ Aplicação de disparos em massa via WhatsApp usando a API do Evolution Go. O re
 | `saas/README.md` | Instalação, execução e testes do SaaS |
 | `saas/docs/ESTRUTURA_TECNICA.md` | Arquitetura implementada do SaaS e responsabilidade de cada pasta |
 | `saas/docs/DECISOES_TECNICAS.md` | Decisões técnicas do SaaS, alternativas consideradas e versões das dependências |
-| `doc_evolution_go.md` | Referência da API Evolution Go |
+| `saas/docs/SUPABASE_CONFIGURACAO.md` | Preparação do projeto Supabase exclusivo (ainda não conectado) |
+| `saas/docs/PLANO_MODULO_WHATSAPP.md` | Plano aprovado do módulo WhatsApp das empresas e andamento das etapas W1 a W4 |
+| `doc_evolution_go.md` | Referência da API Evolution Go. Onde ela diverge do Swagger da versão instalada, vale o Swagger (ARQUITETURA_SAAS §5.2) |
 
 ## Regras obrigatórias
 
@@ -47,7 +49,11 @@ Aplicação de disparos em massa via WhatsApp usando a API do Evolution Go. O re
 - A Zernio é uma integração **independente** do Evolution Go. Não presuma o que ela suporta: confirme na documentação oficial antes de planejar.
 - **Nunca desligue a verificação TLS** (`rejectUnauthorized: false`, `NODE_TLS_REJECT_UNAUTHORIZED=0`) para contornar erro de certificado. Certificado próprio → `EVOLUTION_CA_FILE`.
 - **Não mude a escuta para fora de `127.0.0.1`** no código: nem o MVP nem o SaaS têm login. Quem precisar de rede usa `HOST` no `.env` do MVP, ciente do risco. No SaaS, o padrão de `API_HOST`, do Vite e do preview continua sendo `127.0.0.1`.
-- **Git:** repositório só local. Nunca faça commit, push, remoto ou deploy sem aprovação explícita. Nunca versione `.env`, `saas/.env`, `backup/`, `node_modules/`, `dist/` ou chaves.
+- **Git:**
+  - remoto `origin` no GitHub (`Sinvaldo-Oliveira/disparazap`), publicado a pedido do dono do produto em 2026-11-01;
+  - nunca faça commit, push, novo remoto ou deploy sem aprovação explícita;
+  - antes de cada push, confira que nenhum segredo, dado pessoal real ou endereço privado vai junto (inclusive no histórico);
+  - nunca versione `.env`, `saas/.env`, `backup/`, `node_modules/`, `dist/` ou chaves.
 - **Testes:** rode antes de concluir qualquer mudança de código:
   - **MVP:** `npm test` na raiz;
   - **SaaS:** `npm test`, `npm run typecheck` e `npm run build` dentro de `saas/`.
@@ -62,13 +68,14 @@ Aplicação de disparos em massa via WhatsApp usando a API do Evolution Go. O re
 
 | Pasta | Papel |
 |---|---|
-| `apps/api` | API Fastify 5. Já tem: configuração validada com Zod, `GET /health/live`, prefixo `/api/v1` (ainda sem rotas), erros em RFC 9457, logs com redação, CORS por lista explícita e cabeçalhos de segurança |
-| `apps/web` | Painel React 19 + Vite 8 + React Router 8: layout, menu, Visão Geral e páginas "Em desenvolvimento" |
+| `apps/api` | API Fastify 5: configuração validada com Zod, `GET /health/live` e `/health/ready`, prefixo `/api/v1` (ainda sem rotas), erros em RFC 9457, logs com redação, CORS por lista explícita, cabeçalhos de segurança, **autenticação Better Auth** (`/api/auth/*`, `/api/internal/signup`, `/api/internal/me`), integração global com a Evolution Go do Super-Admin (`/api/internal/platform/*`) , **módulo WhatsApp** das empresas (`/api/internal/whatsapp/*`: instâncias, QR Code, pareamento, status) e **Envio de Mensagens** e **Contatos** (`/api/internal/contact-lists[/:id[/contacts[/remove]]]`, `/contacts/search`, `/media`, `/message-templates`, `/messaging/send`) |
+| `apps/web` | Painel React 19 + Vite 8 + React Router 8: telas Entrar e Criar conta, rotas protegidas, layout, menu, Visão Geral, Configurações (integração global do Super-Admin), WhatsApp, Envio de Mensagens (assistente de 5 etapas portado do MVP, listas de contatos salvas, Excel via SheetJS sob demanda), Contatos (gestão das listas, criação e busca) e páginas "Em desenvolvimento" |
 | `apps/worker` | Processo das filas: por enquanto só ciclo de vida e encerramento controlado; nenhuma fila |
 | `packages/contracts` | Contratos públicos (Zod + tipos) usados pela API e pelo painel |
+| `packages/db` | Só servidor: schema Drizzle (esquemas `identity`, `platform` e `app`), migrations e conexão (PostgreSQL com TLS verificado ou banco embutido PGlite no desenvolvimento) |
 | `packages/shared` | Código só de servidor: `parseEnv`, logger com redação, `handleShutdownSignals` |
 | `infra/docker` | Reservado; ainda não há Docker Compose |
-| `docs` | `ESTRUTURA_TECNICA.md` e `DECISOES_TECNICAS.md` |
+| `docs` | `ESTRUTURA_TECNICA.md`, `DECISOES_TECNICAS.md`, `SUPABASE_CONFIGURACAO.md` e `PLANO_MODULO_WHATSAPP.md` |
 
 Comandos (sempre dentro de `saas/`, com Node ≥ 24.15):
 
@@ -81,9 +88,38 @@ npm test               # Vitest: pacotes, API, worker e painel (jsdom)
 npm run typecheck      # TypeScript em tudo, inclusive nos testes
 npm run build          # tsc -b (pacotes, API, worker) + vite build (painel)
 npm run build:api      # ou build:worker / build:web
+npm run admin:create   # cria o Super-Admin (SUPER_ADMIN_EMAIL); com banco embutido, só com a API parada
+npm run db:generate    # gera migration a partir do schema (db:check confere; db:migrate aplica, só com autorização)
 ```
 
-- **Configuração:** o `.env` do SaaS é `saas/.env` (modelo em `saas/.env.example`), separado do `.env` do MVP. Todas as variáveis têm padrão seguro.
+- **Configuração:** o `.env` do SaaS é `saas/.env` (modelo em `saas/.env.example`), separado do `.env` do MVP. Todas as variáveis têm padrão seguro. Sem `DATABASE_URL`, a API usa o banco embutido em `saas/.data/` (ignorado pelo git); nunca aplique migrations em banco remoto nem use `drizzle-kit push` sem autorização.
+- **Credenciais de integração** (ex.: chave global da Evolution Go, informada pelo Super-Admin em Configurações):
+  - só no cofre `platform.integration_credentials`, cifradas com `SECRETS_MASTER_KEY`;
+  - nunca devolvidas ao navegador (só os 4 últimos caracteres);
+  - nunca em log;
+  - testes usam só a Evolution simulada.
+- **Autenticação:**
+  - tipos de usuário Super-Admin, Admin-Empresa e Admin-MyLinksss;
+  - `platformRole` e `origin` nunca vêm do navegador;
+  - a proteção de origem/CSRF do Better Auth fica sempre ligada (`disableOriginCheck: false`);
+  - o token de sessão só existe no cookie `HttpOnly`.
+- **Módulo WhatsApp:**
+  - a empresa vem sempre da sessão; instância de outra empresa responde 404;
+  - só `owner` e `admin` alteram;
+  - nomes técnicos `dz_…` e token próprio por instância, cifrado no cofre; nenhum dos dois vai ao navegador;
+  - o módulo só age sobre instâncias registradas no banco do DisparaZap: nunca toque nas instâncias do MVP;
+  - excluir na Evolution é pelo **ID** (`DELETE /instance/delete/{instanceId}`), conforme o Swagger da versão instalada;
+  - criar instância real ou conectar número real (homologação W3) só com autorização explícita do dono do produto.
+- **Envio de Mensagens:**
+  - listas de contatos, imagens (`app.media_files`, tipo conferido pelos bytes, até 5 MB) e modelos de mensagem por empresa;
+  - listas de contatos com exclusão definitiva (dado pessoal);
+  - na página Contatos, cada alteração é gravada na hora (renomear, acrescentar, alterar, remover), com a lista travada na transação; o telefone vai no corpo, nunca no caminho da URL;
+  - o CTA vai como link no fim do texto (`composeMessage` em `packages/contracts`); a imagem vai em base64 para `/send/media`, com o texto como legenda;
+  - o telefone é validado de novo na API;
+  - o envio usa o token da instância do cofre e devolve só um motivo fixo, nunca a resposta da Evolution;
+  - número e texto de mensagem nunca vão para o log;
+  - o disparo roda na aba do navegador (fila e histórico ficam para Campanhas);
+  - nunca envie mensagens reais em testes nem em demonstrações: use o simulador `apps/api/src/testing/evolution-simulator.ts`, que fica fora do build de produção.
 - **Testes:** os nomes terminam em `.spec.ts(x)`. Não use, dentro de `saas/`, `*.test.*`, `*-test.*`, `*_test.*`, `test-*.*`, `test.*` nem pastas `test/`, porque o `node --test` da raiz descobriria e executaria esses arquivos.
 - **TypeScript:**
   - só sintaxe "apagável": sem `enum`, `namespace` nem propriedades de parâmetro (`erasableSyntaxOnly`);
@@ -92,7 +128,7 @@ npm run build:api      # ou build:worker / build:web
   - nenhum segredo no painel (o bundle é público);
   - respostas da API pelo formato definido em `packages/contracts`, nunca repassando dados internos.
 - **Interface honesta:** o painel não mostra dados inventados nem login falso; módulo não implementado aparece como "Em desenvolvimento".
-- **Ainda não existe:** autenticação, banco, migrations, filas, Docker Compose, integrações e módulos de negócio.
+- **Ainda não existe:** conexão com o Supabase, entrada pelo MyLinksss, 2FA, recuperação de senha, convites, filas, Docker Compose, campanhas no servidor (fila, histórico, agendamento), consentimento e descadastro de contatos, webhooks da Evolution, conclusão da homologação do WhatsApp no servidor real e os demais módulos de negócio.
 
 ---
 

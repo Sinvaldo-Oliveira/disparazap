@@ -22,7 +22,11 @@
     "typecheck": "tsc -b && tsc -p apps/web/tsconfig.json && tsc -p tsconfig.spec.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "clean": "tsc -b --clean"
+    "clean": "tsc -b --clean",
+    "admin:create": "npm run admin:create -w @disparazap/api",
+    "db:generate": "npm run generate -w @disparazap/db",
+    "db:check": "npm run check -w @disparazap/db",
+    "db:migrate": "npm run migrate -w @disparazap/db"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.2",

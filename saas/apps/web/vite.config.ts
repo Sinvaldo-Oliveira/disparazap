@@ -1,13 +1,24 @@
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { parseEnv } from 'node:util';
 import react from '@vitejs/plugin-react';
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig } from 'vite';
 
-const saasRoot = fileURLToPath(new URL('../..', import.meta.url));
+/**
+ * Só variáveis WEB_* (do saas/.env ou do ambiente), lidas aqui no servidor de desenvolvimento: nada vai para o navegador.
+ * Não usa o loadEnv do Vite: ele aplicaria o NODE_ENV=development do saas/.env ao build, que viraria
+ * build de desenvolvimento (React em modo de depuração, bundle bem maior).
+ */
+function webEnv(): Record<string, string> {
+  const file = fileURLToPath(new URL('../../.env', import.meta.url));
+  const fromFile = existsSync(file) ? parseEnv(readFileSync(file, 'utf8')) : {};
+  const pick = (source: Record<string, string | undefined>) =>
+    Object.fromEntries(Object.entries(source).filter((entry): entry is [string, string] => entry[0].startsWith('WEB_') && typeof entry[1] === 'string'));
+  return { ...pick(fromFile), ...pick(process.env) };
+}
 
-export default defineConfig(({ mode }) => {
-  // Só variáveis WEB_* do saas/.env, lidas aqui no servidor de desenvolvimento — nada vai para o navegador
-  const env = loadEnv(mode, saasRoot, 'WEB_');
-  const apiTarget = env.WEB_API_PROXY_TARGET || 'http://127.0.0.1:3100';
+export default defineConfig(() => {
+  const apiTarget = webEnv().WEB_API_PROXY_TARGET || 'http://127.0.0.1:3100';
 
   return {
     plugins: [react()],

@@ -7,6 +7,7 @@ const fromRoot = (path: string) => fileURLToPath(new URL(path, import.meta.url))
 // Testes leem os pacotes direto do código-fonte: não exigem build prévio
 const alias = {
   '@disparazap/contracts': fromRoot('./packages/contracts/src/index.ts'),
+  '@disparazap/db': fromRoot('./packages/db/src/index.ts'),
   '@disparazap/shared': fromRoot('./packages/shared/src/index.ts'),
 };
 

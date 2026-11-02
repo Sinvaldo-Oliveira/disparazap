@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router';
 import type { NavigationItem } from '../app/navigation';
+import { useSession } from '../auth/AuthProvider';
 import { BrandMark } from './BrandMark';
 
 interface SidebarProps {
@@ -9,6 +10,10 @@ interface SidebarProps {
 }
 
 export function Sidebar({ items, open, onNavigate }: SidebarProps) {
+  const session = useSession();
+  // Super-Admin não pertence a uma empresa: administra a plataforma
+  const workspace = session.organization?.name ?? 'Plataforma DisparaZap';
+
   return (
     <aside id="sidebar" className={`sidebar${open ? ' sidebar--open' : ''}`}>
       <div className="sidebar__brand">
@@ -38,7 +43,10 @@ export function Sidebar({ items, open, onNavigate }: SidebarProps) {
           })}
         </ul>
       </nav>
-      <p className="sidebar__footer">Fase 4 · fundação técnica</p>
+      <div className="sidebar__footer">
+        <span className="sidebar__workspace-label">Espaço de trabalho</span>
+        <span className="sidebar__workspace">{workspace}</span>
+      </div>
     </aside>
   );
 }

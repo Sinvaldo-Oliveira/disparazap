@@ -9,6 +9,7 @@ const TITLES: Readonly<Record<number, string>> = {
   404: 'Recurso não encontrado',
   405: 'Método não permitido',
   406: 'Formato de resposta não suportado',
+  409: 'Conflito',
   413: 'Requisição muito grande',
   415: 'Tipo de conteúdo não suportado',
   429: 'Muitas requisições',
@@ -16,7 +17,7 @@ const TITLES: Readonly<Record<number, string>> = {
   503: 'Serviço indisponível',
 };
 
-function problem(request: FastifyRequest, status: number, detail?: string): ProblemDetails {
+export function problem(request: FastifyRequest, status: number, detail?: string): ProblemDetails {
   return {
     type: 'about:blank',
     title: TITLES[status] ?? (status >= 500 ? 'Erro interno' : 'Erro na requisição'),

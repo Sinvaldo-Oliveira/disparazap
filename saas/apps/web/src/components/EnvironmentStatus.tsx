@@ -1,42 +1,43 @@
 import { RefreshCw } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import type { FetchHealth } from '../app/health-client';
+import { useEffect, useState, type ReactNode } from 'react';
+import type { FetchHealth, FetchReady } from '../app/health-client';
 import { StatusBadge } from './StatusBadge';
 
-type ApiState = { kind: 'checking' } | { kind: 'online' } | { kind: 'offline' };
+type CheckState = 'checking' | 'online' | 'offline';
 
-function ApiRow({ fetchHealth }: { fetchHealth: FetchHealth }) {
-  const [state, setState] = useState<ApiState>({ kind: 'checking' });
+// Uma verificação real (API ou banco), com botão para repetir
+function CheckRow({ label, check, onlineLabel, offlineHint }: { label: string; check: (signal: AbortSignal) => Promise<boolean>; onlineLabel: string; offlineHint: ReactNode }) {
+  const [state, setState] = useState<CheckState>('checking');
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
-    setState({ kind: 'checking' });
-    fetchHealth(controller.signal).then(
-      () => setState({ kind: 'online' }),
+    setState('checking');
+    check(controller.signal).then(
+      (ok) => setState(ok ? 'online' : 'offline'),
       () => {
-        if (!controller.signal.aborted) setState({ kind: 'offline' });
+        if (!controller.signal.aborted) setState('offline');
       },
     );
     return () => controller.abort();
-  }, [fetchHealth, attempt]);
+  }, [check, attempt]);
 
   return (
     <div className="env-status__row">
-      <dt>API</dt>
+      <dt>{label}</dt>
       <dd>
-        {state.kind === 'checking' && <StatusBadge tone="neutral">Verificando…</StatusBadge>}
-        {state.kind === 'online' && <StatusBadge tone="success">Online</StatusBadge>}
-        {state.kind === 'offline' && (
+        {state === 'checking' && <StatusBadge tone="neutral">Verificando…</StatusBadge>}
+        {state === 'online' && <StatusBadge tone="success">{onlineLabel}</StatusBadge>}
+        {state === 'offline' && (
           <>
             <StatusBadge tone="danger">Indisponível</StatusBadge>
-            <span className="env-status__hint">Inicie com <code>npm run dev:api</code></span>
+            <span className="env-status__hint">{offlineHint}</span>
           </>
         )}
-        {state.kind !== 'checking' && (
+        {state !== 'checking' && (
           <button type="button" className="icon-button" onClick={() => setAttempt((n) => n + 1)}>
             <RefreshCw aria-hidden="true" />
-            Verificar novamente
+            Verificar {label === 'API' ? 'a API' : 'o banco'} novamente
           </button>
         )}
       </dd>
@@ -44,23 +45,18 @@ function ApiRow({ fetchHealth }: { fetchHealth: FetchHealth }) {
   );
 }
 
-// Só a API é consultada de verdade; os demais itens descrevem fatos desta fase, sem simular status
-export function EnvironmentStatus({ fetchHealth }: { fetchHealth: FetchHealth }) {
+// API e banco são consultados de verdade; worker e filas descrevem fatos desta fase, sem simular status
+export function EnvironmentStatus({ fetchHealth, fetchReady }: { fetchHealth: FetchHealth; fetchReady: FetchReady }) {
+  const [checkApi] = useState(() => (signal: AbortSignal) => fetchHealth(signal).then(() => true));
   return (
     <dl className="env-status">
-      <ApiRow fetchHealth={fetchHealth} />
+      <CheckRow label="API" check={checkApi} onlineLabel="Online" offlineHint={<>Inicie com <code>npm run dev:api</code></>} />
+      <CheckRow label="Banco de dados" check={fetchReady} onlineLabel="Conectado" offlineHint="A API não conseguiu falar com o banco" />
       <div className="env-status__row">
         <dt>Worker</dt>
         <dd>
           <StatusBadge tone="neutral">Sem verificação</StatusBadge>
           <span className="env-status__hint">Processo separado (<code>npm run dev:worker</code>), sem filas nesta fase</span>
-        </dd>
-      </div>
-      <div className="env-status__row">
-        <dt>Banco de dados</dt>
-        <dd>
-          <StatusBadge tone="neutral">Não conectado</StatusBadge>
-          <span className="env-status__hint">Previsto para a Fase 5</span>
         </dd>
       </div>
       <div className="env-status__row">

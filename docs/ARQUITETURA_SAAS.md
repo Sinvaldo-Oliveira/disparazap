@@ -214,6 +214,8 @@ Erros no formato **RFC 9457** (`application/problem+json`); paginação por curs
   `sendText`, `deleteInstance`…). O restante do sistema não conhece URLs nem headers do Evolution.
 - **Credenciais:**
   - A chave global de cada servidor Evolution existe **só** em segredo do servidor (seção 9 do plano de implantação), nunca no banco nem no navegador.
+    **Revisto em 2026-11-01:** a pedido do dono do produto, a chave é informada pelo Super-Admin na tela e guardada **cifrada**
+    no banco, com a chave-mestra fora dele. Continua nunca indo ao navegador ([DECISOES_TECNICAS D-25](../saas/docs/DECISOES_TECNICAS.md)).
   - O token de cada instância é **gerado pelo DisparaZap** (aleatório, 32 bytes) e guardado criptografado em `integration_credentials`.
 - **Nomes de instância** em servidor compartilhado: `dz_<org_curto>_<aleatório>`, o que evita colisão entre empresas.
 - **TLS:** verificação **ligada**. Se o Evolution estiver na mesma VPS, a comunicação é HTTP pela rede Docker privada, sem exposição.
@@ -230,18 +232,35 @@ Erros no formato **RFC 9457** (`application/problem+json`); paginação por curs
 Fonte: `doc_evolution_go.md`. **Nenhum endpoint marcado ⬜ deve ser implementado antes de confirmado** no Swagger da versão
 instalada (a documentação indica `/swagger/index.html`) e em homologação.
 
-| Endpoint (conforme documentação) | Uso no SaaS | Verificado no servidor real? |
-|---|---|---|
-| `GET /instance/all` | Sincronizar instâncias | ✅ Sim (2026-10-30) |
-| `POST /send/text` | Enviar texto | 🟨 Só contra simulador |
-| `POST /instance/create` | Criar instância | ⬜ Não |
-| `POST /instance/connect` | Iniciar conexão / configurar webhook | ⬜ Não |
-| `GET /instance/qr` | QR Code | ⬜ Não |
-| `POST /instance/pair` | Código de pareamento | ⬜ Não |
-| `GET /instance/status` | Status | ⬜ Não. A documentação mostra `data.connected`/`data.loggedIn`; o `CLAUDE.md` antigo citava `data.status` |
-| `DELETE /instance/delete/{nome}` | Excluir instância | ⬜ Não |
-| `POST /user/check` | Verificar se o número tem WhatsApp | ⬜ Não |
-| Webhook / WebSocket / RabbitMQ / NATS | Receber eventos | ⬜ Não. Formato, autenticação e entrega precisam de teste |
+**Atualização de 2026-11-01 (etapa W1 do [plano do módulo WhatsApp](../saas/docs/PLANO_MODULO_WHATSAPP.md)):**
+- o Swagger da versão instalada (`/swagger/doc.json`, versão declarada "1.0") foi lido, sem chave e sem criar nada;
+- as rotas de instância foram confirmadas ali e implementadas **contra o simulador**;
+- o uso real (homologação, W3) ainda depende de autorização do dono do produto;
+- o Swagger não tipa as respostas (`gin.H`), por isso os campos das respostas só se confirmam na homologação.
+
+**Atualização de 2026-11-01, à noite:**
+- o dono do produto criou instâncias reais pelo painel e conectou números, e o uso mostrou que o `/instance/status` não traz o
+  número;
+- os formatos das respostas foram então conferidos no **código-fonte público** da Evolution Go (`pkg/instance`,
+  `pkg/sendMessage`), sem acessar o servidor;
+- detalhes em DECISOES_TECNICAS D-38.
+
+| Endpoint | Uso no SaaS | Swagger da versão instalada | Testado no servidor real? |
+|---|---|---|---|
+| `GET /instance/all` | Sincronizar instâncias; teste de conexão | ✅ Confirmado | ✅ Sim (2026-10-30) |
+| `POST /send/text` | Enviar texto (MVP e Envio de Mensagens do SaaS) | ✅ `{ number, text, delay }`. Pelo código-fonte: resposta `data.Info.ID`; falhas como HTTP 500 com `{"error"}` ("no active session found", "… is not registered on WhatsApp") | 🟨 Em uso real pelo MVP; o SaaS só contra simulador |
+| `POST /send/media` | Imagem com legenda (Envio de Mensagens) | ✅ `{ number, type, url, caption, filename }`. Pelo código-fonte: `url` sem http(s) é base64 puro; imagem jpeg/png/webp | ⬜ Só contra simulador |
+| `POST /send/button` | Botão de CTA (não usado: escolha do dono do produto pelo link no texto) | ✅ Botões `reply`/`copy`/`url`/`call`/`pix`; título, descrição e rodapé obrigatórios; imagem só com botões de resposta | ⬜ Não |
+| `GET /instance/info/{instanceId}` | Número conectado (`jid`) e estado ao vivo de uma instância | ✅ Confirmado; modelo `Instance` lido no código-fonte | ⬜ Não |
+| `POST /instance/create` | Criar instância | ✅ `{ name, token, instanceId?, advancedSettings?, proxy? }`, chave global | 🟨 Usado com sucesso no uso real do dono do produto pelo painel (2026-11-01, segundo o log da API) |
+| `POST /instance/connect` | Iniciar conexão (webhook omitido) | ✅ `{ webhookUrl, subscribe, immediate, phone, … }`; os nomes de webhook diferem dos da criação no `doc_evolution_go.md` | 🟨 Usado com sucesso no uso real do dono do produto pelo painel (2026-11-01, segundo o log da API) |
+| `GET /instance/qr` | QR Code | ✅ Confirmado | 🟨 Usado com sucesso no uso real do dono do produto pelo painel (2026-11-01, segundo o log da API) |
+| `POST /instance/pair` | Código de pareamento | ✅ `{ phone, subscribe }` | 🟨 Usado com sucesso no uso real do dono do produto pelo painel (2026-11-01, segundo o log da API) |
+| `GET /instance/status` | Status | ✅ Rota confirmada. Pelo código-fonte (2026-11-01): `data.Connected`, `data.LoggedIn` e `data.Name`, **sem o número** (o `myJid` da documentação não é enviado) | 🟨 Usado pelo painel no uso real do dono do produto (2026-11-01) |
+| `DELETE /instance/logout` | Desconectar | ✅ Existe (não aparece no `doc_evolution_go.md`). Há também `POST /instance/disconnect` e `/reconnect` | ⬜ Não (W3) |
+| `DELETE /instance/delete/{instanceId}` | Excluir instância | ✅ **Pelo ID**, não pelo nome como a documentação sugeria | ⬜ Não (W3) |
+| `POST /user/check` | Verificar se o número tem WhatsApp | Não consultado | ⬜ Não |
+| Webhook / WebSocket / RabbitMQ / NATS | Receber eventos | Não consultado | ⬜ Não. Formato, autenticação e entrega precisam de teste |
 
 ### 5.3 Eventos de entrada (webhooks do Evolution)
 
@@ -439,7 +458,7 @@ erDiagram
 | Senhas | argon2id |
 | Tokens de sessão, convite e API key | Só hash (SHA-256/HMAC); o valor aparece uma única vez |
 | Tokens de instância, credenciais Zernio, segredos de webhook, segredo TOTP | Criptografia AES-256-GCM com chave mestra fora do banco; `key_version` para rotação |
-| Chave global do Evolution | Somente em segredo do servidor; nunca no banco |
+| Chave global do Evolution | ~~Somente em segredo do servidor; nunca no banco~~ **Revisto em 2026-11-01 (D-25):** AES-256-GCM no banco, como os tokens de instância; nunca no navegador |
 | Telefones em supressão | HMAC com *pepper* do servidor (permite checar sem guardar o número) |
 | Corpo de mensagens | Dado pessoal: retenção configurável por empresa; nunca em logs |
 | Logs da aplicação | Redação automática de `authorization`, `cookie`, `apikey`, `token`, `password`, `secret` |

@@ -7,7 +7,8 @@ import { Sidebar } from '../components/Sidebar';
 export function AppLayout({ items }: { items: readonly NavigationItem[] }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const { pathname } = useLocation();
-  const current = items.find((item) => item.path === pathname);
+  // Subpáginas (ex.: /contatos/:id) mostram o nome do módulo no topo
+  const current = items.find((item) => item.path === pathname || (item.path !== '/' && pathname.startsWith(`${item.path}/`)));
 
   return (
     <div className="layout">

@@ -1,4 +1,4 @@
-import { Bot, LayoutDashboard, Megaphone, MessageCircle, Plug, Settings, Share2, Users, Workflow, type LucideIcon } from 'lucide-react';
+import { Bot, LayoutDashboard, Megaphone, MessageCircle, Plug, Send, Settings, Share2, Users, Workflow, type LucideIcon } from 'lucide-react';
 
 export type ModuleStatus = 'available' | 'in_development';
 
@@ -25,17 +25,17 @@ export const NAVIGATION: readonly NavigationItem[] = [
     status: 'available',
     permission: 'overview:view',
     summary: 'Apresentação do ambiente de desenvolvimento.',
-    plannedFor: 'Fase 4 (atual)',
+    plannedFor: 'Disponível',
   },
   {
     id: 'whatsapp',
     label: 'WhatsApp',
     path: '/whatsapp',
     icon: MessageCircle,
-    status: 'in_development',
+    status: 'available',
     permission: 'whatsapp:view',
     summary: 'Conectar números pelo Evolution Go (QR Code ou código de pareamento) e acompanhar o status de cada instância.',
-    plannedFor: 'Etapas 6 e 7 do primeiro MVP SaaS',
+    plannedFor: 'Disponível: instâncias e conexão',
   },
   {
     id: 'campaigns',
@@ -48,14 +48,24 @@ export const NAVIGATION: readonly NavigationItem[] = [
     plannedFor: 'Etapa 9 do primeiro MVP SaaS',
   },
   {
+    id: 'send',
+    label: 'Envio de Mensagens',
+    path: '/envio-de-mensagens',
+    icon: Send,
+    status: 'available',
+    permission: 'messaging:send',
+    summary: 'Disparo de mensagens de texto para listas de contatos salvas da empresa, pela instância conectada, com intervalo entre envios e variações de mensagem.',
+    plannedFor: 'Disponível: envio acompanhado nesta página (o disparo roda com a página aberta)',
+  },
+  {
     id: 'contacts',
     label: 'Contatos',
     path: '/contatos',
     icon: Users,
-    status: 'in_development',
+    status: 'available',
     permission: 'contacts:view',
-    summary: 'Contatos com registro de consentimento, listas, descadastro e importação de planilhas.',
-    plannedFor: 'Etapa 8 do primeiro MVP SaaS',
+    summary: 'Listas de contatos da empresa: criar, importar planilhas, buscar em todas as listas, editar e remover contatos. Consentimento e descadastro virão na Etapa 8.',
+    plannedFor: 'Disponível: gestão das listas de contatos (consentimento e descadastro na Etapa 8)',
   },
   {
     id: 'agents',

@@ -8,3 +8,12 @@ export const healthLiveSchema = z.strictObject({
 });
 
 export type HealthLive = z.infer<typeof healthLiveSchema>;
+
+// Resposta de GET /health/ready: o processo responde e o banco também. Não revela qual banco nem onde está.
+export const healthReadySchema = z.strictObject({
+  status: z.enum(['ok', 'unavailable']),
+  database: z.enum(['ok', 'unavailable']),
+  timestamp: z.iso.datetime(),
+});
+
+export type HealthReady = z.infer<typeof healthReadySchema>;

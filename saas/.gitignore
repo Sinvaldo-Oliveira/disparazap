@@ -11,3 +11,6 @@ dist/
 coverage/
 *.log
 .vite/
+
+# Banco embutido de desenvolvimento (PGlite)
+.data/
