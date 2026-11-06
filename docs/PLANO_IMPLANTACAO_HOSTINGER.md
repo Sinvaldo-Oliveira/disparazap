@@ -6,6 +6,10 @@
 | **Data** | 2026-10-31 |
 | **Arquitetura** | [ARQUITETURA_SAAS.md](ARQUITETURA_SAAS.md) |
 
+> **Atualização 2026-11-01:** para a primeira publicação, o dono do produto escolheu o **aplicativo Node.js do hPanel**
+> (Business ou Cloud), com Supabase. O passo a passo está em `saas/infra/hostinger/README.md` (DECISOES_TECNICAS D-45).
+> Este plano de VPS continua válido para quando a escala pedir (filas, worker, Evolution na mesma máquina).
+
 > Nomes de domínio aparecem como `<dominio>`; segredos aparecem apenas pelo **nome** da variável, nunca pelo valor.
 > Especificações e nomes de planos da Hostinger mudam: confirme no painel antes de contratar.
 

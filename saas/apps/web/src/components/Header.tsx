@@ -14,10 +14,17 @@ export function Header({ title, menuOpen, onToggleMenu }: HeaderProps) {
   const session = useSession();
   const { signOut } = useAuth();
   const [leaving, setLeaving] = useState(false);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
 
   async function handleSignOut() {
     setLeaving(true);
-    await signOut();
+    setSignOutError(null);
+    try {
+      await signOut();
+    } catch (err) {
+      setLeaving(false);
+      setSignOutError(err instanceof Error ? err.message : 'Não foi possível sair agora.');
+    }
   }
 
   return (
@@ -47,6 +54,11 @@ export function Header({ title, menuOpen, onToggleMenu }: HeaderProps) {
           <span>Sair</span>
         </button>
       </div>
+      {signOutError && (
+        <p className="auth-alert topbar__alert" role="alert">
+          {signOutError}
+        </p>
+      )}
     </header>
   );
 }

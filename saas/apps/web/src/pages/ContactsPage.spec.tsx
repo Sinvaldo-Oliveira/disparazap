@@ -326,7 +326,8 @@ describe('Contatos: gestão de uma lista', () => {
     expect(rows()[0]?.textContent).toContain('Pessoa 120');
     fireEvent.change(search, { target: { value: 'ninguém' } });
     expect(screen.getByText('Nenhum contato com "ninguém" nesta lista.')).toBeTruthy();
-  });
+    // 120 linhas desenhadas no jsdom: com a suíte inteira rodando junto (API, Inbox), passa de 5 s em máquinas mais lentas
+  }, 20_000);
 });
 
 describe('Contatos: permissões', () => {

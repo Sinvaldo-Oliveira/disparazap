@@ -274,6 +274,10 @@ instalada (a documentação indica `/swagger/index.html`) e em homologação.
 
 ### 5.4 Zernio (planejado — não implementar nesta fase)
 
+> **Atualização 2026-11-02:** a documentação oficial está resumida em `saas/docs/REFERENCIA_ZERNIO.md`, e o plano da
+> integração (conta Zernio própria por empresa, configurada em Integrações) está em `saas/docs/PLANO_MODULO_ZERNIO.md`,
+> aprovado e implementado (Z1) em 2026-11-02 contra a Zernio simulada (DECISOES_TECNICAS D-46).
+
 - Integração **independente** do Evolution, com conexão **por conta de usuário** (`external_connections`).
 - Interface `SocialProvider` será definida **somente depois** de a documentação oficial da Zernio estar no repositório e as
   operações necessárias serem confirmadas (publicação, mensagens, comentários). Nenhum endpoint é presumido.

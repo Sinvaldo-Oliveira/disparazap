@@ -1,13 +1,17 @@
 import cors from '@fastify/cors';
 import type { FastifyInstance } from 'fastify';
 
-// Cabeçalhos aplicados a toda resposta da API (JSON): sem cache, sem sniffing, sem embutir em frames
-export function registerSecurityHeaders(app: FastifyInstance): void {
+/**
+ * Cabeçalhos aplicados a toda resposta: sem sniffing, sem embutir em frames e sem cache, a não ser que a rota
+ * defina o próprio (arquivos do painel). Com hsts (produção, sempre em https), o navegador só volta por https.
+ */
+export function registerSecurityHeaders(app: FastifyInstance, { hsts = false }: { hsts?: boolean } = {}): void {
   app.addHook('onSend', async (request, reply, payload) => {
     reply.header('x-content-type-options', 'nosniff');
     reply.header('x-frame-options', 'DENY');
     reply.header('referrer-policy', 'no-referrer');
-    reply.header('cache-control', 'no-store');
+    if (!reply.hasHeader('cache-control')) reply.header('cache-control', 'no-store');
+    if (hsts) reply.header('strict-transport-security', 'max-age=31536000');
     reply.header('x-request-id', String(request.id));
     return payload;
   });

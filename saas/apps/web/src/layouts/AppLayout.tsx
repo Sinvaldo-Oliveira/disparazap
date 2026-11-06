@@ -11,7 +11,8 @@ export function AppLayout({ items }: { items: readonly NavigationItem[] }) {
   const current = items.find((item) => item.path === pathname || (item.path !== '/' && pathname.startsWith(`${item.path}/`)));
 
   return (
-    <div className="layout">
+    // A Inbox ocupa a altura da tela: as colunas rolam por dentro, sem sobrar espaço vazio embaixo
+    <div className={pathname === '/inbox' || pathname.startsWith('/inbox/') ? 'layout layout--fill' : 'layout'}>
       <a className="skip-link" href="#conteudo">Pular para o conteúdo</a>
       <Sidebar items={items} open={menuOpen} onNavigate={() => setMenuOpen(false)} />
       {menuOpen && <div className="layout__backdrop" aria-hidden="true" onClick={() => setMenuOpen(false)} />}

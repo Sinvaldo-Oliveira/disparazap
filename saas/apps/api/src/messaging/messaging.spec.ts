@@ -42,7 +42,7 @@ import { createServices, type ApiServices } from '../services.ts';
 import { EvolutionSimulator } from '../testing/evolution-simulator.ts';
 
 // Tudo fictício: Evolution Go simulada nesta máquina, banco em memória, números de exemplo
-const PANEL = 'http://127.0.0.1:5173';
+const PANEL = 'http://127.0.0.1:3000';
 const PASSWORD = 'senha-forte-de-teste-123';
 const GLOBAL_KEY = 'chave-global-ficticia-MSG1';
 const SUPER_ADMIN_EMAIL = 'super.admin@disparazap.test';

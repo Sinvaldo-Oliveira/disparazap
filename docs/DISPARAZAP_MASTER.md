@@ -9,7 +9,7 @@
 | **Fase atual** | MVP local (disparador de texto via Evolution Go) com correções de segurança da Fase 3 ([SEGURANCA_MVP.md](SEGURANCA_MVP.md)); git local com o original (`908ca2f`) e as correções em commits próprios. **Fase 4 concluída:** fundação técnica do SaaS em `saas/`, registrada em commit local (2026-11-01) |
 | **Próxima fase** | Fase 5 — banco de dados, autenticação e Super Admin. 5A.1 (auditoria) e 5A.2 (plano do **Supabase Cloud exclusivo**, [SUPABASE_CONFIGURACAO.md](../saas/docs/SUPABASE_CONFIGURACAO.md)) concluídas. **Autenticação implementada em 2026-11-01** (Better Auth: cadastro com empresa, login, três tipos de usuário), rodando com banco embutido. Também em 2026-11-01: integração global com a Evolution Go, **módulo WhatsApp das empresas** (instâncias e conexão por QR Code ou código; já usado pelo dono do produto com o servidor real) e **Envio de Mensagens** (disparador do MVP dentro do painel, com listas de contatos salvas por empresa; testado contra a Evolution simulada). Falta conectar ao Supabase, concluir a homologação do WhatsApp e testar um envio real pelo painel |
 | **Hospedagem** | VPS Hostinger ([PLANO_IMPLANTACAO_HOSTINGER.md](PLANO_IMPLANTACAO_HOSTINGER.md)) |
-| **Última atualização** | 2026-11-01 |
+| **Última atualização** | 2026-11-03 |
 
 ---
 
@@ -44,9 +44,10 @@ outras plataformas (como a MyLinksss).
 |---|---|---|
 | **Painel SaaS** | Super Admin, Empresas, Usuários, papéis e permissões | 🟨 Parcial: fundação (Fase 4) + autenticação (2026-11-01). Já tem cadastro com empresa, login, sair e os tipos Super-Admin, Admin-Empresa e Admin-MyLinksss. Faltam 2FA, convites, recuperação de senha, permissões por tipo e entrada pelo MyLinksss |
 | **WhatsApp** | Evolution Go: instâncias, QR Code/pareamento, status, envio e recebimento | 🟨 Parcial. **MVP:** lista instâncias e envia texto, com TLS verificado. **SaaS (2026-11-01):** integração global configurada pelo Super-Admin (endereço + chave cifrada + teste de conexão); cada empresa cria a sua instância e conecta o número por QR Code ou código de pareamento (já usado pelo dono do produto com o servidor real); o Super-Admin vê todas (só leitura); **Envio de Mensagens** no painel, com listas de contatos salvas por empresa (envio testado só contra a Evolution simulada) |
-| **Redes sociais** | Zernio, conectada por conta de usuário (Instagram, Facebook, TikTok) | ⬜ Não iniciado |
+| **Redes sociais** | Zernio, conectada por conta de usuário (Instagram, Facebook, TikTok) | 🟨 Parcial (2026-11-02): **integração implementada** (Z1, contra a Zernio simulada). Cada empresa liga a própria conta Zernio em **Integrações** e conecta, reconecta e desconecta as redes ([plano](../saas/docs/PLANO_MODULO_ZERNIO.md)). **Página Redes Sociais (2026-11-03):** Visão Geral, Criar publicação (imagem e texto em 7 redes; publicar, agendar, rascunho), Calendário, Histórico, Biblioteca de imagens e Resultados, testados contra a Zernio simulada ([plano](../saas/docs/PLANO_MODULO_REDES_SOCIAIS.md)). Faltam a homologação real com a conta do dono do produto, vídeo, webhooks e interações |
+| **Inbox (atendimento multicanal)** | Conversas de WhatsApp e das redes (DMs, comentários, avaliações) em três colunas, com atendentes, preparada para IA e automações | 🟨 Plano aprovado (decisões N1 a N8, 2026-11-03); I0 sem serviço real concluída. **I1 (WhatsApp) implementada localmente em 2026-11-04**, testada só com a Evolution simulada; o **recebimento fica desligado** até a homologação com uma instância de teste ([plano](../saas/docs/PLANO_MODULO_INBOX.md), [I0 e procedimento da I1](../saas/docs/HOMOLOGACAO_I0_EVOLUTION.md)) |
 | **Agentes de IA** | Personalidade, base de conhecimento e regras de atendimento | ⬜ Não iniciado |
-| **Automações** | Campanhas, filas, agendamentos e acompanhamentos (follow-ups) | 🟨 Parcial (campanha manual no navegador) |
+| **Automações** | Campanhas, filas, agendamentos e acompanhamentos (follow-ups); automações de redes pela Zernio (comentário → DM, fluxos) | 🟨 Parcial (campanha manual no navegador); automações de redes: plano aprovado; consulta (A1), Comentário → DM e → resposta pública (A2) e só seguidores e menção em story (A3) e link → conversa, só Instagram, com QR code (A5) e comentário → perguntar antes do link, só Instagram (A6) e atividade no detalhe (A4) implementadas, trava desligada (`saas/docs/PLANO_MODULO_AUTOMACOES.md`, 2026-11-05) |
 | **API REST + Webhooks** | Integração com MyLinksss e outras plataformas | ⬜ Não iniciado |
 
 ### Observações por módulo
@@ -190,6 +191,15 @@ Navegador (index.html)                 Servidor local (server.js)            Evo
 | 2026-11-01 | **Módulo WhatsApp das empresas** aprovado ([plano](../saas/docs/PLANO_MODULO_WHATSAPP.md)): **1 instância por empresa** (ajustável depois); **dono e administradores** gerenciam, operadores e visualizadores só veem; o **Super-Admin vê todas as instâncias, só leitura**; as **instâncias do MVP não são tocadas** nem mostradas às empresas | Decisões W1, W2, W5 e W6 do dono do produto |
 | 2026-11-01 | Rotas da Evolution Go confirmadas no **Swagger da versão instalada** (só leitura, sem chave) antes de implementar; a **homologação real** (1 instância e 1 número de teste) fica para quando o dono do produto escolher | Decisões W3 e W4; ARQUITETURA_SAAS §5.2 |
 | 2026-11-01 | **Envio de Mensagens** no menu, depois de Campanhas: o disparador do MVP trazido para o painel. Cada empresa usa as suas instâncias e as suas **listas de contatos salvas**, sem ver as das outras | Pedido do dono do produto |
+| 2026-11-03 | **Módulo Redes Sociais aprovado e implementado (S1 a S5, S7 e biblioteca de imagens).** Decisões R1 a R10 do plano, pelas recomendações. Dono, administradores e operadores publicam; visualizadores só veem. O fuso horário fica por empresa (padrão Brasília). A agência alternando entre clientes fica para "Empresas e membros". As imagens ficam no banco e são enviadas à Zernio na publicação; o vídeo vem depois. Erros em mensagens fixas. Primeiras redes: Instagram, Facebook, LinkedIn, Threads, Pinterest, Google Business e X. Rascunhos na Zernio. Homologação real por etapa, com autorização | Pedido do dono do produto ("pode criar as funcionalidades conforme o seu planejamento"); [plano](../saas/docs/PLANO_MODULO_REDES_SOCIAIS.md); DECISOES_TECNICAS D-48 a D-51 |
+| 2026-11-03 | **Um processo por banco embutido.** A API recusa abrir `saas/.data/pglite` se outra API viva estiver com ele | Incidente de 2026-11-03: duas APIs de desenvolvimento corromperam o banco local, recuperado com autorização do dono do produto (DECISOES_TECNICAS D-51) |
+| 2026-11-04 | **Inbox, etapa I1 (WhatsApp), implementada localmente.** Menu **Inbox** com três colunas (conversas, conversa, detalhes), filtros por canal, conta, busca e situação, histórico, resposta em texto sem envio duplicado, confirmações de entrega e leitura, tempo real com consulta periódica de reserva. Quem responde assume a conversa; o atendente vê as dele e as sem responsável; o visualizador não usa a Inbox. Campos e trava de controle prontos para IA e automações, sem motor. Mídias só com o tipo (I2) | Pedido do dono do produto ("Etapa I1: implementação local da Inbox multicanal"); decisões N1 a N8; DECISOES_TECNICAS D-52 a D-55 |
+| 2026-11-04 | **Recebimento da Inbox desligado por padrão** (`INBOX_EVENTS_ENABLED` e `INBOX_ACTIVATION_ENABLED` = `false`, também na produção) e **ligado por instância, pelo dono ou administrador, com confirmação**, em Integrações → WhatsApp ("Receber mensagens na Inbox"). Nada é ativado sozinho nas instâncias existentes. As chaves só são ligadas na homologação autorizada, com uma instância de teste | Pedido do dono do produto ("não ativar automaticamente o recebimento nas instâncias existentes"; P0 a P7 só com autorização) |
+| 2026-11-05 | **Automações de redes pela Zernio aprovadas** (PLANO_MODULO_AUTOMACOES, decisões A1 a A9 conforme as recomendações): seção "Redes sociais" na página Automações antes das campanhas no servidor; dono e administradores gerenciam; trava `AUTOMATIONS_WRITE_ENABLED` desligada até a homologação; `alsoMatchInDms` desligado por padrão; atividade a cada 15 s. Etapa A1 (consulta) implementada. |
+| 2026-11-03 | **O MVP sai da raiz e o sistema fica só com o SaaS.** O disparador já está no SaaS (com imagem, CTA, modelos, contatos e Zernio, que o MVP não tinha). Cópia em `backup/mvp-removido-2026-11-03/` e histórico no git | Pedido e confirmação do dono do produto; ver CHANGELOG de 2026-11-03 |
+| 2026-11-02 | **Página Integrações reúne as conexões da empresa:** WhatsApp (Evolution Go) primeiro, depois Zernio e API/MyLinksss. O item "WhatsApp" saiu do menu, e o endereço `/whatsapp` leva à seção | Pedido do dono do produto |
+| 2026-11-02 | **Zernio entra agora**, e não mais depois do primeiro MVP SaaS (revê a decisão de 2026-10-31). **Cada empresa usa a própria conta Zernio e a própria chave de API**, configuradas na página **Integrações**, e conecta as redes que quiser. A cobrança, o limite e o risco de suspensão da Zernio ficam separados por empresa | Pedido do dono do produto; documentação oficial lida em 2026-11-02 ([REFERENCIA_ZERNIO.md](../saas/docs/REFERENCIA_ZERNIO.md)); plano em [PLANO_MODULO_ZERNIO.md](../saas/docs/PLANO_MODULO_ZERNIO.md) |
+| 2026-11-01 | **Primeira publicação no aplicativo Node.js da Hostinger** (hPanel, Business ou Cloud), com banco no **Supabase** e **cadastro aberto**. Um processo só entrega a API e o painel; o pacote é gerado por `npm run pacote:hostinger`. A VPS (PLANO_IMPLANTACAO_HOSTINGER) fica como próximo passo, se a escala pedir | Escolhas do dono do produto; DECISOES_TECNICAS D-45 |
 | 2026-11-01 | Repositório **publicado no GitHub** (`origin`: `Sinvaldo-Oliveira/disparazap`). Commit e push continuam só com aprovação, sempre depois de uma varredura de segredos e dados reais | Pedido do dono do produto; substitui o "sem remoto" de 2026-10-31 |
 | 2026-11-01 | Página **Contatos**: gestão das listas salvas da empresa (criar, renomear, excluir; adicionar à mão ou por Excel, editar e remover contatos), com **busca** nas listas e nos contatos de todas as listas. Cada alteração é **gravada na hora**. Consentimento e descadastro continuam para a Etapa 8 | Pedido do dono do produto; DECISOES_TECNICAS D-43 e D-44 |
 | 2026-11-01 | Mensagem com **1 imagem** (o texto vai como legenda) e **CTA como link no fim do texto**; **modelos de mensagem** salvos por empresa para reutilizar | Escolhas do dono do produto entre as opções da Evolution Go (o botão clicável não aceita imagem junto e pode não aparecer em alguns aparelhos); DECISOES_TECNICAS D-41 e D-42 |
@@ -229,6 +239,7 @@ Estas decisões precisam ser tomadas antes de iniciar o SaaS. As recomendações
   - adoção das instâncias do MVP.
 - [ ] **Campanhas no servidor:** fila (D5), histórico, agendamento e envio com a página fechada.
 - [x] Página **Contatos** com gestão das listas, criação e busca (2026-11-01).
+- [ ] **Publicação na Hostinger (dono do produto):** criar o projeto Supabase, rodar `producao:migrar` e `producao:admin`, enviar o pacote e conferir `/health/ready`. Depois: papéis separados e RLS no Supabase, monitor de disponibilidade e decidir se o cadastro continua aberto.
 - [ ] **Contatos, próximos passos:**
   - consentimento e descadastro (D6);
   - busca sem acentos no servidor e índice de texto (com o Supabase);
@@ -265,7 +276,28 @@ Estas decisões precisam ser tomadas antes de iniciar o SaaS. As recomendações
 - [ ] Limites de envio no servidor (propostas P1–P5) e correções pendentes V6, V8, V9 ([SEGURANCA_MVP §5–6](SEGURANCA_MVP.md#5-riscos-pendentes))
 - [ ] Domínio, tamanho das VPS, backup externo, CI e monitoramento (I2–I7)
 - [ ] Planos, limites e cobrança
-- [ ] Operações necessárias da Zernio, confirmadas na documentação oficial
+- [x] Operações da Zernio confirmadas na documentação oficial ([REFERENCIA_ZERNIO.md](../saas/docs/REFERENCIA_ZERNIO.md), 2026-11-02)
+- [x] Plano da Zernio aprovado (2026-11-02) e integração implementada contra o simulador (Z1)
+- [ ] **Homologação real da Zernio (Z2), em andamento:** Instagram do dono do produto conectado em 2026-11-02. A segunda rede recebeu pedido de pagamento da Zernio: o painel agora mostra o motivo exato. As 2 redes grátis contam a conta Zernio inteira, e o X exige cartão desde a primeira
+- [x] **Redes Sociais (Z-P):** plano aprovado e etapas S1 a S5, S7 e biblioteca de imagens implementadas em 2026-11-03
+  ([PLANO_MODULO_REDES_SOCIAIS.md](../saas/docs/PLANO_MODULO_REDES_SOCIAIS.md)).
+- [ ] **Inbox multicanal:** decisões N1 a N8 aprovadas em 2026-11-03; **I1 implementada localmente em 2026-11-04**.
+  - **Pendente:** autorizar, um por um, os passos H1 a H7 (os procedimentos P0 a P7) da
+    [homologação](../saas/docs/HOMOLOGACAO_I0_EVOLUTION.md) (seção 10):
+    - P0, confirmar que o proxy da Evolution não registra a chave da URL;
+    - P1, ler a versão do servidor;
+    - P3, criar uma instância de teste com número de teste;
+    - depois, ligar as duas chaves no `saas/.env` e o recebimento só nessa instância.
+  - Para a produção: migration `0007_inbox` e as duas chaves, só com autorização (seção 10.1 da homologação).
+  - N5 (armazenamento privado de mídias) e N6 (retenção, com validação jurídica) ainda precisam de definição.
+  - Vários atendentes dependem do módulo de membros e convites e do e-mail transacional.
+- [ ] **Redes Sociais, próximos passos:**
+  - homologação real com a conta Zernio do dono do produto: primeiro a Visão Geral (só leitura), depois 1 publicação e 1
+    agendamento de teste numa rede dele;
+  - vídeo (S6), conferindo na homologação o endereço do armazenamento da Zernio;
+  - webhooks e interações (S8), depois da publicação na Hostinger e de uma política de LGPD para comentários;
+  - arrastar no calendário;
+  - aprovação do cliente antes de publicar (R9).
 - [ ] Provedor de IA e quem arca com o custo (D9)
 - [ ] Escopo da integração com a MyLinksss (do lado do DisparaZap: API + webhooks)
 - [ ] Destino do MVP local após o lançamento do SaaS

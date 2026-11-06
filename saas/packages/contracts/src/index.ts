@@ -6,3 +6,8 @@ export * from './platform.ts';
 export * from './whatsapp.ts';
 export * from './health.ts';
 export * from './problem.ts';
+export * from './zernio.ts';
+export * from './social.ts';
+export * from './timezone.ts';
+export * from './inbox.ts';
+export * from './automations.ts';

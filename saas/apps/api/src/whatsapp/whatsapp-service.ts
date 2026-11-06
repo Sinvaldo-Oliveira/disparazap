@@ -17,10 +17,13 @@ export { canManage, type Member };
 /** Falha com status HTTP e mensagem fixa para a tela */
 export class WhatsAppError extends Error {
   readonly status: number;
-  constructor(status: number, message: string) {
+  /** Status HTTP que a Evolution devolveu (só para o log do servidor; nunca vai para a tela) */
+  readonly upstreamStatus: number | null;
+  constructor(status: number, message: string, upstreamStatus: number | null = null) {
     super(message);
     this.name = 'WhatsAppError';
     this.status = status;
+    this.upstreamStatus = upstreamStatus;
   }
 }
 
@@ -245,7 +248,7 @@ export async function connectInstance(ctx: WhatsAppContext, member: Member, id: 
   let row = await loadInstance(ctx, member, id);
   const token = await openToken(ctx, vault, row);
   try {
-    await provider.startConnection(token);
+    await provider.startConnection(token, Boolean(row.inboxEnabledAt));
     const qrCode = await provider.getQrCode(token);
     row = await updateRow(ctx, row, { status: 'connecting', lastStatusAt: new Date() });
     return { instance: toPublic(row), qrCode };
@@ -277,7 +280,7 @@ export async function pairInstance(ctx: WhatsAppContext, member: Member, id: str
   let row = await loadInstance(ctx, member, id);
   const token = await openToken(ctx, vault, row);
   try {
-    if (row.status !== 'connecting') await provider.startConnection(token);
+    if (row.status !== 'connecting') await provider.startConnection(token, Boolean(row.inboxEnabledAt));
     const code = await provider.pairWithPhone(token, phone.number);
     row = await updateRow(ctx, row, { status: 'connecting', lastStatusAt: new Date() });
     return { instance: toPublic(row), code };
@@ -315,22 +318,43 @@ export async function logoutInstance(ctx: WhatsAppContext, member: Member, id: s
   return toPublic(await updateRow(ctx, row, { status: 'disconnected', phoneE164: null, connectedAt: null, lastStatusAt: new Date() }));
 }
 
-export async function deleteInstance(ctx: WhatsAppContext, member: Member, id: string): Promise<void> {
+const DELETE_REFUSED = 'O servidor de WhatsApp não conseguiu excluir a instância agora. Nada foi apagado aqui: tente de novo em instantes.';
+
+/**
+ * Exclui na Evolution (pelo ID) e depois no DisparaZap. Se a Evolution recusar, confere a lista do servidor: se a instância
+ * já não existe lá, a exclusão segue aqui (senão a empresa fica presa a uma instância que não existe mais). Se ainda existe,
+ * nada é apagado no DisparaZap e o status recusado fica disponível para o log.
+ */
+export async function deleteInstance(ctx: WhatsAppContext, member: Member, id: string): Promise<{ upstreamStatus: number | null; goneOnServer: boolean }> {
   requireManager(member);
   const { provider } = await readyProvider(ctx);
   const row = await loadInstance(ctx, member, id);
+  let upstreamStatus: number | null = null;
+  let goneOnServer = false;
   try {
     const providerId = row.providerInstanceId ?? (await provider.findInstanceId(row.providerInstanceName));
     if (providerId) await provider.deleteInstance(providerId);
+    else goneOnServer = true;
   } catch (err) {
-    // Já não existe na Evolution: segue com a exclusão no DisparaZap
-    if (!(err instanceof ProviderError && err.kind === 'not_found')) providerFailure(err);
+    // Já não existe na Evolution (404): segue com a exclusão no DisparaZap
+    if (err instanceof ProviderError && err.kind === 'not_found') {
+      goneOnServer = true;
+    } else if (err instanceof ProviderError && err.kind === 'rejected') {
+      upstreamStatus = err.httpStatus;
+      const remaining = await provider.listServerInstances().catch(() => null);
+      const stillThere = remaining?.some((item) => item.id === row.providerInstanceId || item.name === row.providerInstanceName) ?? true;
+      if (remaining === null || stillThere) throw new WhatsAppError(502, DELETE_REFUSED, upstreamStatus);
+      goneOnServer = true;
+    } else {
+      providerFailure(err);
+    }
   }
   const now = new Date();
   await ctx.db.transaction(async (tx) => {
     await tx.update(whatsappInstances).set({ deletedAt: now, updatedAt: now, status: 'disconnected' }).where(eq(whatsappInstances.id, row.id));
     if (row.credentialId) await tx.update(integrationCredentials).set({ revokedAt: now }).where(eq(integrationCredentials.id, row.credentialId));
   });
+  return { upstreamStatus, goneOnServer };
 }
 
 /** Super-Admin: todas as instâncias ativas, com a empresa (só leitura) */

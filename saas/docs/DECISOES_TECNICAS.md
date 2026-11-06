@@ -12,7 +12,7 @@ Decisões de produto e arquitetura geral ficam em `docs/DISPARAZAP_MASTER.md` e 
 | TypeScript | 7.0.2 | Raiz (dev) |
 | Fastify | 5.12.7 | `apps/api` |
 | @fastify/cors | 11.3.1 | `apps/api` |
-| Zod | 4.6.7 | `contracts`, `shared`, `api`, `worker` |
+| Zod | 4.6.7 | `contracts`, `shared`, `api`, `worker`, `web` (modo `jitless` no navegador, D-45) |
 | pino | 10.4.0 | `shared`, `worker` |
 | React / React DOM | 19.3.1 | `apps/web` |
 | React Router | 8.5.1 | `apps/web` |
@@ -534,3 +534,362 @@ autorização.
   - no banco embutido, essas extensões não estão ligadas.
 - **Componente comum:** `ContactAdder` (Manual / Excel) serve ao Envio de Mensagens e à página Contatos. Ele valida a regra de
   telefone e tira repetidos antes de entregar os contatos; quem o usa decide se grava na hora ou só na tela.
+
+## Publicação na Hostinger (2026-11-01)
+
+## D-45 · Um processo só no aplicativo Node.js da Hostinger
+- **Contexto:**
+  - o dono do produto escolheu o aplicativo Node.js do hPanel (Business ou Cloud), com Supabase;
+  - a documentação oficial: Node 24 disponível, entrada por um arquivo, porta em `PORT`, arquivos trocados a cada publicação
+    e nenhum terminal.
+- **API e painel no mesmo processo e na mesma origem:**
+  - `WEB_DIST_DIR` liga a entrega do painel pela API;
+  - em desenvolvimento continua vazio (o Vite serve o painel).
+- **Arquivos do painel em memória, sem `@fastify/static`:**
+  - o plugin oficial traz o `glob`, com alerta moderado no `npm audit`;
+  - o painel são poucos arquivos fixos: lidos na inicialização e entregues por comparação exata do caminho;
+  - assim não há como sair da pasta, e o painel não precisa de dependência nova.
+- **CSP do painel:**
+  - `default-src 'self'`, `script-src 'self'`, `connect-src 'self'`, `frame-ancestors 'none'`;
+  - imagens também de `data:` (ícone) e `blob:` (pré-visualização);
+  - estilos com `'unsafe-inline'`, por segurança dos estilos do React;
+  - o Zod roda em modo `jitless` no navegador para não tentar `eval`.
+- **Proxy:**
+  - `API_TRUST_PROXY=true` aceita o `X-Forwarded-For` só de endereços internos (revisto em D-47): vale o IP que o proxy
+    viu, não o que o visitante escreveu;
+  - HSTS em produção.
+- **Escuta:**
+  - o padrão do código continua `127.0.0.1`;
+  - no modelo da Hostinger, `API_HOST=0.0.0.0` vem como variável, porque a documentação não diz por qual interface o proxy
+    deles chega;
+  - o painel tem login e o acesso de fora passa pelo HTTPS da Hostinger.
+- **Pacote (`npm run pacote:hostinger`):**
+  - código já compilado; os imports `@disparazap/*` viram caminhos relativos, sem workspaces nem links no servidor;
+  - dependências descobertas pelos imports do código, nas versões instaladas, com `package-lock.json`;
+  - o empacotador falha se alguma dependência não estiver declarada, se as partes discordarem de versão ou se aparecer
+    `.env`, chave privada ou mapa de código-fonte.
+- **Operações de produção a partir do computador do dono do produto:** sem terminal na Hostinger, `producao:migrar` e
+  `producao:admin` leem `saas/.env.producao` (ignorado pelo git).
+  - Mostram só o servidor, nunca usuário, senha ou string de conexão.
+  - As migrations pedem a confirmação `APLICAR`.
+  - As migrations continuam manuais (SUPABASE_CONFIGURACAO §5); a API nunca as aplica sozinha num PostgreSQL.
+- **Certificado do banco:** vai dentro do pacote (`certs/`, só certificado público), porque os arquivos do servidor são
+  trocados a cada publicação.
+- **Fica para depois:**
+  - papéis separados e RLS no Supabase;
+  - o worker (sem filas);
+  - VPS (PLANO_IMPLANTACAO_HOSTINGER), se a escala pedir.
+
+## Integração com a Zernio (2026-11-02)
+
+## D-46 · Conta Zernio própria por empresa, com adaptador próprio
+- **Modelo (decisão Z1 do dono do produto):** cada empresa liga a **própria** conta Zernio com a própria chave. A cobrança, o
+  limite de pedidos e o risco de suspensão da Zernio ficam separados por empresa (REFERENCIA_ZERNIO §2).
+- **Adaptador próprio, sem o SDK `@zernio/node`:**
+  - usamos 8 rotas;
+  - o SDK está na versão 0.2.x e muda quase todo dia;
+  - o adaptador reaproveita o `httpRequest` do projeto (TLS sempre verificado, sem redirecionamento, limite de tamanho e
+    tempo).
+- **Endereço fixo:** a empresa informa só a chave, nunca uma URL. O DisparaZap não vira ponte para outros endereços.
+- **Perfil:** um por empresa na conta Zernio dela, com `externalId` = id da empresa.
+  - É reaproveitado se já existir; o conflito de nome ganha um sufixo.
+  - Os outros perfis da conta não são tocados (decisão Z4).
+- **Contas lidas na hora:** nada das redes é copiado para o banco nesta etapa.
+  - Só contam as contas do perfil da empresa, mesmo que a resposta traga outras.
+  - A saúde (`/accounts/health`) só é pedida para a tela.
+- **Volta da autorização:**
+  - o `redirect_url` leva `dz=<rede>.<validade>.<assinatura>`;
+  - a assinatura é HMAC-SHA256 com subchave HKDF do cofre (`vault.sign`), sobre empresa + usuário + rede + validade de 15
+    minutos;
+  - é curto por causa do limite de 258 caracteres do X;
+  - na volta, a API confere com a sessão e **relê as contas na Zernio**;
+  - o texto de erro que vem na URL é ignorado: só o código vira uma mensagem fixa (`Object.hasOwn`).
+- **Chave guardada:**
+  - cofre com contexto `zernio:api_key:<empresa>`;
+  - trocar a chave apaga a anterior;
+  - gravações simultâneas não dão erro (inserir ou travar a linha);
+  - a recusa da Zernio marca a integração como `invalid`, e ela volta a `active` quando a chave funciona;
+  - remover a chave não mexe na conta da Zernio.
+- **Papéis e limites:**
+  - dono e administradores alteram; os demais veem;
+  - o papel é conferido antes do limite de tentativas, então quem não pode alterar não gasta o limite da empresa.
+
+## D-47 · `API_TRUST_PROXY` só confia em proxy interno (revê D-45)
+- **Problema** (apontado pela revisão de código): confiar no último salto valia para qualquer conexão. Com
+  `API_HOST=0.0.0.0`, quem chegasse direto na porta podia escolher o próprio IP e escapar dos limites de login e cadastro.
+- **Agora:**
+  - `true` aceita o `X-Forwarded-For` só quando quem conecta é um endereço interno (`loopback`, `linklocal`,
+    `uniquelocal`), onde fica o proxy da hospedagem;
+  - também aceita a lista exata de IPs/CIDRs do proxy;
+  - `false` continua o padrão.
+- **Se a hospedagem usar proxy em endereço público:** os visitantes apareceriam todos com o IP do proxy. Nesse caso, informe
+  o IP do proxy na lista.
+
+## Redes Sociais (2026-11-03)
+
+Plano aprovado: `PLANO_MODULO_REDES_SOCIAIS.md` (decisões R1 a R10 com as recomendações). Nenhuma dependência nova.
+
+## D-48 · Espelho local das publicações, com a Zernio como fonte da verdade
+- **Tabela `app.social_posts`** (migration `0006_social`): uma linha por publicação da empresa na Zernio.
+  - Guarda situação, texto, horários, redes de destino (`targets`, JSON) e imagens (`media`, JSON).
+  - Guarda também quem criou pelo painel (a Zernio não conhece os usuários do DisparaZap) e a chave de idempotência.
+- **Por que espelhar:**
+  - calendário, histórico e Visão Geral leem do banco, sem gastar o limite da Zernio (60 pedidos/min com até 2 redes);
+  - se a Zernio estiver fora do ar, a tela mostra o último estado conhecido, com aviso.
+- **Sincronização incremental:** `GET /v1/posts?profileId&updatedSince` ao abrir as telas.
+  - No máximo uma a cada 30 s por empresa (5 s com "Atualizar"), com folga de 1 min contra relógios diferentes.
+  - A primeira janela cobre 90 dias.
+  - A marca fica em `zernio_connections.posts_synced_at`.
+  - Publicações criadas direto na Zernio, no perfil da empresa, entram como "criadas fora do DisparaZap".
+  - Publicação excluída lá some daqui ao abrir os detalhes (a Zernio não devolve excluídas no `updatedSince`).
+- **Idempotência:** o painel gera um `requestId` (UUID) por formulário, e ele vira a `Idempotency-Key` do `POST /v1/posts`.
+  - O mesmo pedido de novo responde com a publicação já gravada, sem chamar a Zernio.
+  - Erro de passagem (rede, 5xx, tempo esgotado) repete uma vez com a mesma chave, e a Zernio devolve o post original.
+  - Se ainda falhar, a tela pede para conferir o Histórico antes de tentar de novo.
+- **Mensagens fixas por categoria de erro** (`errorCategory` da Zernio → `SOCIAL_ERROR_MESSAGES`, decisão R6). O
+  `errorMessage` da rede nunca é lido.
+- **Isolamento:**
+  - cada empresa usa a própria chave;
+  - as listas são filtradas pelo perfil da empresa;
+  - toda ação exige a publicação no espelho da empresa (404);
+  - as contas de cada post são relidas na Zernio e conferidas contra o perfil antes de publicar.
+
+## D-49 · Fuso horário da empresa e datas sem biblioteca
+- **Coluna `identity.organizations.timezone`** (IANA, padrão `America/Sao_Paulo`), alterada por dono e administradores (R3).
+- **Contrato `packages/contracts/src/timezone.ts`** (só `Intl`, no navegador e no Node): converte "AAAA-MM-DDTHH:mm" no fuso da
+  empresa para o instante e o contrário, inclusive na mudança de horário de verão.
+- **O painel manda a hora local; a API converte e manda à Zernio** o instante com `Z` e também o `timezone`. A documentação
+  da Zernio diverge sobre o fuso padrão sem `timezone` (REFERENCIA_ZERNIO §10).
+- **Calendário próprio** (grade de mês, semana e dia em CSS), sem biblioteca nova. Os dias são chaves "AAAA-MM-DD"; o fuso
+  só entra ao converter para instantes.
+- **Reagendar só a data** (`POST /posts/:id/reschedule`) manda à Zernio apenas `scheduledFor` e `timezone`. Um `PUT` completo
+  poderia apagar opções que o painel não tem (ex.: pasta do Pinterest de um post criado na Zernio).
+
+## D-50 · Imagens: biblioteca no banco, envio à Zernio pelo servidor; vídeo depois
+- **A biblioteca é a mesma `app.media_files` do Envio de Mensagens** (JPG, PNG e WebP até 5 MB, tipo pelos bytes).
+  - Ganhou `file_name` para a busca, enviado em `POST /api/internal/media?name=` e limpo de pastas e caracteres de controle.
+- **Na publicação, a API envia cada imagem à Zernio:** `POST /v1/media/presign` e depois `PUT` do arquivo no endereço assinado.
+  - O `PUT` vai **sem a chave da empresa** (é outro servidor, de armazenamento).
+  - Endereços só `https` (a exceção é a origem configurada da Zernio simulada).
+  - O envio é refeito a cada publicação, porque a Zernio apaga a mídia não usada quando o post é excluído.
+- **Política de segurança do painel inalterada:** as miniaturas vêm da própria API.
+- **Vídeo (S6) fica para depois:** exige envio direto do navegador e liberar o domínio exato do armazenamento na política de
+  segurança, conferido na homologação.
+- **Regras de cada rede em `packages/contracts/src/social.ts`** (`SOCIAL_RULES`, `socialRuleIssues`): as mesmas para os avisos
+  do painel e a conferência da API.
+  - Instagram só JPG/PNG.
+  - Facebook até 4 MB.
+  - O X conta 280 caracteres.
+  - Story só no Instagram e no Facebook, com 1 imagem.
+  - Pinterest com 1 imagem.
+- **Métricas que cada rede informa** (`SOCIAL_METRIC_SUPPORT`): a tela de Resultados mostra "—" onde a rede não informa, nunca
+  zero.
+
+## D-51 · Um processo por banco embutido (trava `saas/.data/pglite.lock`)
+- **Incidente de 2026-11-03:**
+  - duas APIs de desenvolvimento ficaram rodando ao mesmo tempo, deixadas pelo assistente em sessões diferentes;
+  - a segunda abria o banco antes de falhar na porta (EADDRINUSE);
+  - as duas gravaram no mesmo PGlite e o banco não abriu mais ("could not locate a valid checkpoint record").
+- **Recuperação, autorizada pelo dono do produto:**
+  - cópia de segurança antes de tudo;
+  - `pg_resetwal` do PostgreSQL 18 portátil (pacote oficial da EDB, sem instalar nada), numa cópia;
+  - conferência das contagens e `REINDEX` dos esquemas;
+  - troca da pasta, com a danificada guardada em `saas/.data/pglite-danificado-2026-11-03` (ignorada pelo git).
+- **Proteção no código** (`packages/db/src/client.ts`, `lockEmbeddedDir`):
+  - o banco embutido só abre se o processo conseguir criar `<pasta>.lock` com o próprio PID;
+  - outro processo vivo com a trava → erro `DZ_DB_LOCKED`, e a API sai com a mensagem "outra API já está usando o banco
+    embutido", sem tocar no banco;
+  - trava de processo encerrado à força é substituída.
+
+## Inbox com WhatsApp, etapa I1 (2026-11-04)
+
+Plano: `PLANO_MODULO_INBOX.md` (decisões N1 a N8 aprovadas). Base: `HOMOLOGACAO_I0_EVOLUTION.md`. **Nenhuma dependência nova.**
+
+## D-52 · Eventos da Evolution: cliente WebSocket próprio, modo difusão, desligado por padrão
+- **Cliente próprio** (`apps/api/src/integrations/ws-client.ts`, RFC 6455 mínimo, só leitura), em vez de:
+  - o `WebSocket` nativo do Node, que não informa o código HTTP da recusa. Sem ele, não dá para distinguir a chave recusada (401)
+    e o cliente insistiria; e a Evolution grava cada token recusado no log em texto puro. Ele também não permite fixar o TLS
+    verificado nem limitar o tamanho das mensagens;
+  - o pacote `ws`, que pela decisão N7 só entra como dependência de desenvolvimento.
+- **Modo difusão** (`/ws?token=<chave global>`, sem `instanceId`), com filtro no DisparaZap. O modo por instância tem a falha
+  da remoção da conexão antiga, que deixa a conexão "muda" (HOMOLOGACAO_I0 §5.1).
+- **Filtro antes de gravar ou avisar:** só instâncias registradas no banco, do mesmo servidor, não excluídas e com
+  `inbox_enabled_at` preenchido. O `instanceToken` do evento é comparado em tempo constante com o token do cofre. Evento de
+  instância desconhecida (MVP, outros sistemas) é contado e descartado, sem registrar nada do conteúdo.
+- **Chave recusada:** guarda só o hash da chave, não tenta de novo enquanto ela for a mesma e mostra "chave recusada" na Inbox.
+  Volta sozinho quando o Super-Admin troca a chave em Configurações.
+- **Reconexão** com espera crescente (1 s a 60 s, com variação). Sinal de vida a cada 30 s, prazo de 10 s para o pong.
+  Cada queda abre um período sem recebimento (`inbox_reception_gaps`), fechado ao reconectar e mostrado na Inbox. Não há
+  reenvio do que se perdeu: a Evolution não guarda eventos.
+- **Processamento em fila única**, na ordem de chegada (um processo, D-45).
+- **Duas chaves, `false` por padrão em todos os ambientes:**
+  - `INBOX_EVENTS_ENABLED` liga o consumidor (conexão de saída com a chave global);
+  - `INBOX_ACTIVATION_ENABLED` libera o botão "Receber mensagens na Inbox".
+  Só a homologação autorizada (P2 a P4) as liga. Nada é ativado sozinho nas instâncias existentes.
+- **A URL (que leva a chave) e o conteúdo dos eventos nunca vão para o log.**
+
+## D-53 · Modelo da Inbox e gravação idempotente
+- **Migration `0007_inbox`:** sete tabelas no esquema `app` e `whatsapp_instances.inbox_enabled_at`.
+  - Chaves estrangeiras compostas `(organization_id, id)`, como nas outras tabelas da empresa: uma conversa nunca aponta para
+    contato ou instância de outra empresa.
+  - O `drizzle-kit` gerou as chaves compostas antes dos índices únicos de que elas dependem. A ordem foi corrigida à mão, como
+    na `0004_templates`; sem isso, a migration falha e não é aplicada.
+- **Idempotência:**
+  - mensagem única por `(conversation_id, external_id)`: evento repetido não duplica;
+  - envio do painel único por `(organization_id, client_request_id)`.
+- **Fora de ordem:**
+  - a ordem da conversa segue a hora do WhatsApp, não a de chegada;
+  - a prévia e a última mensagem não retrocedem;
+  - recibo que chega antes da mensagem fica em `inbox_pending_receipts` e é aplicado quando ela chegar;
+  - a situação só avança (enviando → enviada → entregue → lida).
+- **Contato:** o mesmo contato pode chegar pelo número ou pelo LID (`inbox_contact_identities`). A conversa prefere o
+  identificador por número, que é por onde o envio sai.
+- **Mídia (I2 depende da N5):** só o tipo e a legenda. O conteúdo em base64 que vem no evento é descartado.
+- **Só conversas individuais:** grupos, status, reações e mensagens de controle ficam de fora.
+
+## D-54 · Responder pela Inbox: sem duplicar, assumindo o atendimento
+- **Pedido único:** o painel gera um `requestId` (UUID) e o repete ao tentar de novo depois de uma falha de rede. O mesmo
+  pedido devolve o registro já gravado (`replayed`), sem chamar a Evolution, mesmo com dois cliques simultâneos.
+- **A mensagem é gravada "enviando" antes de chamar a Evolution.**
+  - O eco `SendMessage` casa com ela pelo texto e ganha o id do WhatsApp.
+  - Se o eco chegar antes da resposta, a resposta só completa o que faltava.
+  - Sem resposta da Evolution, a mensagem fica "enviando", com aviso de que pode ter saído.
+- **Respostas da Evolution:** só motivos fixos chegam à tela (desconectado, número recusado…), nunca o corpo da resposta.
+- **Quem responde assume:**
+  - a conversa vai para o modo `human`, e a `control_version` sobe se o modo mudou;
+  - sem responsável, ela passa a ser de quem respondeu;
+  - encerrada, ela reabre;
+  - tudo fica em `inbox_conversation_events`.
+- **Trava das respostas automáticas** (`canDeliverAutomated`): uma resposta de IA ou automação só sai se o modo e a versão
+  ainda forem os mesmos de quando ela foi gerada. Fica pronta para as etapas I7 a I9. Nenhum motor de IA ou automação nesta
+  etapa.
+- **Papéis (N3/N4):**
+  - dono e administradores veem todas as conversas;
+  - o atendente (operador) vê as dele e as sem responsável; a de outro atendente responde 404;
+  - o visualizador não tem Inbox (403).
+- **Destino:** o número do contato; contato só com LID usa o identificador da conversa. A confirmar na homologação (P5).
+- **Reconectar o número pelo QR Code mantém a configuração de eventos**, porque o `/instance/connect` a regrava. Sem isso, a
+  Inbox pararia de receber sem aviso.
+
+## D-55 · Tempo real no painel: SSE só com ids, consulta periódica de reserva
+- **`GET /api/internal/inbox/stream` (SSE)**, com `reply.hijack()`:
+  - avisos `{ type, conversationId }`, sem conteúdo;
+  - filtrados pela empresa da sessão e pela visibilidade do atendente;
+  - sinal de vida a cada 25 s;
+  - duração máxima de 15 min: o navegador reconecta sozinho e a sessão é conferida de novo;
+  - no máximo 50 conexões por empresa;
+  - encerrados no `preClose`.
+- **Barramento em memória** (`InboxBus`): serve a um processo só (Hostinger, D-45). Com mais processos, troca por Redis ou
+  `LISTEN/NOTIFY`.
+- **No painel (`EventSource`):**
+  - sem o canal, consulta a cada 5 s;
+  - com o canal, ainda confere tudo a cada minuto;
+  - ao reconectar, relê o que pode ter chegado no intervalo.
+- **Responsivo pelo endereço** (`/inbox`, `/inbox/:id`, `/inbox/:id/detalhes`): o CSS mostra uma coluna por vez abaixo de
+  960 px, pelo atributo `data-view`. Sem `matchMedia` no código: o botão Voltar do navegador funciona e a tela é testável.
+
+## D-56 · Teste de acesso à Inbox da Zernio (Z1, 2026-11-04)
+- **Botão administrativo** em Integrações → Zernio, com confirmação. Nunca roda sozinho ao abrir a página.
+- **Só leitura:** `GET /v1/inbox/conversations` com o perfil da própria empresa e `limit=1`. O servidor só conta as conversas e nunca lê nem guarda o conteúdo.
+- **Só dono e administradores**, pela sessão. A rota exige `{ "confirmed": true }` no corpo e tem limite de tentativas.
+- **Sem efeito colateral:** o resultado não muda a situação da integração (uma chave recusada não fica marcada como inválida por causa do teste).
+- **Resultados:** acesso confirmado, recurso indisponível, falha de autenticação, falha temporária e diagnóstico inconclusivo. Um 403 **não** é tomado como falta de add-on: a tela mostra o código que a Zernio devolveu.
+- **Log:** `zernio.inbox.teste` com o resultado e o status, sem chave, perfil, conversa ou texto.
+- **Testado contra a Zernio simulada** (`inboxMode`: 200, 403 com código e sem código, 402, 401, 429, 500 e formato inesperado). A consulta real não foi executada.
+
+## D-57 · Conversas do Instagram lidas direto da Zernio, sem gravar (Z2, 2026-11-04)
+- **Sem migração de banco:** a leitura é feita a cada pedido, pela API do DisparaZap, direto na Zernio. Nada é gravado e nada das mensagens vai para o log.
+  - Motivo: as tabelas da Inbox estão presas a `whatsapp_instances` (AUDITORIA §F). Gravar exigiria a migração que ainda aguarda aprovação.
+- **Endpoints verificados** em docs.zernio.com (leitura de 2026-11-04):
+  - lista: `GET /v1/inbox/conversations` (`profileId`, `accountId`, `platform`, `limit` até 100, `cursor`, `sortOrder`);
+  - mensagens: `GET /v1/inbox/conversations/{conversationId}/messages`, com `accountId` **obrigatório**, `sortOrder` (`desc` = mais recentes primeiro) e `pagination.nextCursor`;
+  - texto em `message`; sentido em `direction` (`incoming` = contato, `outgoing` = empresa).
+- **Escopo por conta:** toda leitura passa pelas contas do perfil da empresa. Conta de outra empresa responde 404, e conta que não é do Instagram responde 400 (esta etapa lê só o Instagram).
+- **Erros fixos:** 401 vira "trocar a chave"; 403 vira "não liberou a Inbox" (sem concluir sozinho que é add-on); 429 pede pausa; resposta fora do formato vira mensagem geral (502).
+- **Sem envio:** a resposta pelo Instagram fica para a etapa seguinte, com `HUMAN_AGENT` apenas em resposta digitada por pessoa.
+- **Limite conhecido da Meta:** o histórico de Instagram é reenviado só até 500 mensagens recentes por conversa (`platforms/instagram/inbox`).
+- **Testado contra a Zernio simulada** (`inboxThreads`): ordem cronológica, paginação em 50 com "ver anteriores", isolamento, falhas e log sem texto.
+
+## D-58 · Visão unificada e validação de conta nas redes (Z2.2, 2026-11-04)
+- **"Todos os canais"** reúne WhatsApp (servidor) e Instagram (Zernio, lido ao abrir a visão). Ordem por atividade, no painel.
+- **Só o Instagram é lido** nesta etapa. TikTok e as outras redes mostram o estado "não habilitada" e não chamam a Zernio.
+- **Sem fallback de conta:** conversa que não traz a conta pedida, ou que não é do Instagram, é descartada. O identificador nunca é trocado.
+- **Filtros que não se aplicam à rede somem** quando uma rede está aberta (busca, filtro por conta e abas).
+
+## D-59 · Horário de envio e tipos de anexo nas mensagens de rede (Z2.3, 2026-11-04)
+- **Horário:** `sentAt` (horário de envio, documentado) quando a Zernio informa, senão `createdAt` (não documentado como envio). A tela ordena por esse horário, e não pela ordem da página.
+- **Anexos:** mostrados pelo tipo documentado (`image`, `video`, `audio`, `file`, `sticker`, `share`, `template`, `unsupported_type`). Tipo fora da lista vira `unsupported_type`. A URL do arquivo não é lida (expira).
+- **Texto:** `message` vazio fica vazio. Não se inventa texto para mensagem com anexo.
+- **Pendência:** confirmar com uma leitura real autorizada se a janela de mensagens recentes segue `sentAt` ou `createdAt`.
+
+## D-60 · Diagnóstico temporário das datas do Instagram (Z2.4, 2026-11-04)
+- Rota só para dono e administradores, com no máximo 10 mensagens por leitura. Devolve datas e campos, nunca o texto.
+- Disparada pela lista, sem abrir a conversa, porque abrir carrega a página de mensagens (50 por vez).
+- **Removível:** rota `/social/diagnostico-datas`, botão "Diagnosticar datas" e `SocialDateDiagnosticPanel`, depois da homologação.
+
+## D-61 · Histórico confiável e janela de resposta do Instagram (Z3.1, 2026-11-04)
+- O histórico só é confiável quando a Zernio confirma `sortOrderApplied = desc`. Sem isso: aviso, "ver anteriores" desativado e janela bloqueada.
+- A janela (24 h sem tag; 24 h a 7 dias com `HUMAN_AGENT` para resposta humana; mais de 7 dias bloqueado) fica em um único lugar: `socialReplyWindow`.
+- Limite provisório de 1.000 caracteres para texto simples.
+
+## D-62 · Registro de envios com RLS (Z3.1, rascunho, 2026-11-04)
+- Tabela `app.inbox_social_sends` em rascunho (`saas/docs/MIGRACAO_0008_SOCIAL_SENDS_RASCUNHO.sql`), fora de `packages/db/migrations` para não ser aplicada pelo servidor de desenvolvimento.
+- Segue o padrão de SUPABASE_CONFIGURACAO: RLS habilitada e forçada, políticas por operação, sem DELETE para a aplicação, nada concedido a PUBLIC, anon, authenticated ou service_role.
+- **Bloqueio:** a aplicação precisa definir `app.org_id` por transação antes de aplicar em produção.
+
+## D-63 · Contexto de empresa por transação (Z3.2, 2026-11-04)
+- `withTenant(db, organizationId, fn)` define `app.org_id` com `set_config(..., true)`: escopo da transação, sem persistir no pool.
+- A empresa vem sempre da sessão. Identificador fora do formato não executa.
+- Testes com papel que não é superusuário (`dz_app`), conforme a exigência de RLS.
+
+## D-64 · Envio de resposta humana pelo Instagram com registro antes da chamada (Z3.2, 2026-11-04)
+- Só origem humana. Janela revalidada com histórico lido na hora. Sem histórico confirmado ou sem data confiável, bloqueia.
+- Registro `pending` antes da chamada. A mesma intenção (requestId) nunca chega duas vezes à Zernio.
+- Resultado incerto (409, 5xx, tempo esgotado, resposta sem id) fica `unknown` e não é reenviado sozinho.
+- Desligado por `INBOX_SOCIAL_SEND_ENABLED` (padrão `false`). O registro usa a tabela `app.inbox_social_sends`, que só existe depois da migração 0008 aprovada; sem ela, o envio não deve ser habilitado.
+
+## D-65 · Automações de redes pela Zernio, sem cópia no banco (PLANO_MODULO_AUTOMACOES, 2026-11-05)
+- A Zernio guarda as automações. O DisparaZap lê e (nas próximas etapas) altera direto nela, com a chave e o perfil da empresa. Sem tabela nem migração.
+- Toda leitura confere se a conta da automação é do perfil da empresa, relido na Zernio. O resto é descartado; no detalhe, 404 sem dizer se existe em outro lugar.
+- Formato tolerante (`id` ou `_id`, conta como texto ou objeto), porque a documentação não traz a resposta completa. Sem id ou sem conta, descarta.
+- Dono e administradores gerenciam; atendentes e visualizadores só veem (decisão A2).
+- Trava `AUTOMATIONS_WRITE_ENABLED` (padrão `false`, também na produção) até a homologação H1 a H3.
+- Erros só como mensagens fixas; o texto das DMs e das respostas nunca vai para o log.
+- Alternativa considerada: espelhar as automações numa tabela. Descartada: duplicaria a fonte da verdade e guardaria texto sem necessidade.
+
+## D-66 · Escrita das automações: pausada, confirmação e nome único (PLANO_MODULO_AUTOMACOES A2, 2026-11-05)
+- Toda automação é criada com `isActive: false`. Ativar é outra ação, com confirmação que diz que as mensagens são reais.
+- A Zernio não documenta `Idempotency-Key` para `POST /v1/comment-automations`. O DisparaZap recusa nome repetido na mesma conta (maiúsculas e minúsculas contam iguais), então repetir o pedido não duplica. Resultado incerto (5xx, tempo esgotado, resposta fora do formato) devolve uma mensagem para conferir a lista antes de tentar de novo.
+- Regras por rede num só lugar do contrato (`automationInputProblem`): Instagram e Facebook exigem a DM (até 640 caracteres com botões, 1.000 sem); TikTok, Threads, LinkedIn e YouTube só aceitam resposta pública; botões só com `https://`.
+- O corpo enviado leva só os campos documentados; `alsoMatchInDms` vai sempre `false` (decisão A4) e nenhuma postagem específica é vinculada nesta etapa.
+- Alternativa considerada: guardar uma tabela local de pedidos para idempotência (como o envio do Instagram, D-64). Descartada nesta etapa: o nome único resolve a repetição sem migração.
+
+## D-67 · Só seguidores e menção em story, só no Instagram (PLANO_MODULO_AUTOMACOES A3, 2026-11-05)
+- As duas automações só aparecem e só são aceitas para contas do Instagram (capacidade `full`), na tela e na API.
+- Só seguidores usa a verificação documentada (`whenUnknown: "verify"`), porque o Instagram só informa quem segue depois de a pessoa mandar uma mensagem; a resposta pública sai sempre (`publicReplyPolicy: "always"`).
+- Menção em story não aceita palavra-chave, resposta pública nem verificação. A repetição padrão é uma resposta a cada 24 h.
+- O gatilho é fixo depois de criado. Gatilhos que a tela não cria (`story_reply`, `live_comment`) não são editados pelo DisparaZap.
+- Alternativa considerada: liberar a verificação também no Facebook, como diz a documentação oficial. Adiada: a skill e o plano aprovado dizem só Instagram; conferir na homologação.
+
+## D-68 · Link → conversa: fluxo de referência, só Instagram, criado pausado (PLANO_MODULO_AUTOMACOES A5, 2026-11-05)
+- O link é um fluxo da Zernio (`/v1/workflows`) com gatilho `referral` (ref exato) e intervalo de repetição; sem tabela no banco (D-65).
+- Só Instagram nesta etapa. O Instagram nem sempre repassa o `ref`; por isso a tela avisa e a alternativa "envie MENU" fica para depois.
+- Nasce sempre pausado (`POST /v1/workflows` cria rascunho). Ativar e pausar são ações separadas, com confirmação na tela.
+- A lista da Zernio não traz o gatilho. O código do link vai na descrição do fluxo (`DisparaZap link: <código>`) e é lido de volta; o link completo só sai para contas com `username` conhecido. Fluxo sem essa descrição aparece sem link.
+- Unicidade conferida antes de chamar a Zernio: nome por conta (como nos comentários) e código por conta (dois fluxos com o mesmo `ref` seriam ambíguos).
+- Documentação: a página de atualização de fluxo diz que o grafo pode mudar em qualquer status; a visão geral diz que só em rascunho ou pausado. Esta etapa não edita grafo.
+- QR code: aprovado pelo dono depois (decisão A6 do plano). Gerado no servidor com a biblioteca `qrcode` (1.5.4, em `apps/api`; tipos `@types/qrcode` 1.5.6), como PNG em data URL. Alternativa descartada: gerar no navegador, que levaria a biblioteca ao bundle público. O QR leva só o link público.
+
+## D-69 · Comentário → perguntar antes do link: pergunta em texto, botão depois da resposta (PLANO_MODULO_AUTOMACOES A6, 2026-11-05)
+- Fluxo da Zernio com gatilho `comment` (palavras-chave, `contains`, qualquer publicação), pergunta em texto, `wait_for_reply` de 1440 min e botão com o link só na saída `reply`. Sem resposta, a saída `timeout` termina o fluxo.
+- Por que a pergunta vai sem botão: a documentação oficial diz que o Instagram recusa botões numa resposta privada a quem não segue e ainda gasta a única resposta privada do comentário. Por isso a pergunta é texto e o botão vai na mensagem seguinte, como no exemplo oficial.
+- Sem condição: qualquer resposta libera o link. Escolhido porque o formato das condições e os campos obrigatórios do gatilho `comment` não foram confirmados na documentação; a aplicação de regras de resposta fica para depois da homologação.
+- Conflito: uma automação de comentário com a mesma palavra responde primeiro e o fluxo não inicia (documentação). O aviso aparece no construtor; a checagem automática fica para a homologação.
+- Nasce pausado, com as mesmas regras do link (D-68): só Instagram, ativar com confirmação, sem edição de grafo.
+
+## D-70 · Atividade das automações: texto fixo, sem comentário para quem só lê, atualização de 15 s (PLANO_MODULO_AUTOMACOES A4, 2026-11-05)
+- Os registros vêm de `GET /v1/comment-automations/{id}/logs` na Zernio (sem tabela local, D-65). A tela mostra só um texto fixo por situação; o motivo e a mensagem de erro da Zernio são texto livre e não saem da API.
+- Os comentários que não casaram (`misses`) trazem nome e texto de outras pessoas: saem só para dono e administradores (decisão A7). Atendentes e visualizadores recebem `misses: null`.
+- A atividade se atualiza a cada 15 s enquanto a página do detalhe estiver aberta (decisão A9). Com 120 leituras por minuto por empresa, a conta cabe com folga.
+- Regra de repetição: já existe desde a A2 (uma vez por pessoa ou com intervalo). A A4 só mostra o efeito dela nos registros.
+- Não verificado na documentação: o limite máximo de `limit` e os valores aceitos em `status`. A leitura usa 50 registros e não filtra por status.

@@ -14,3 +14,7 @@ coverage/
 
 # Banco embutido de desenvolvimento (PGlite)
 .data/
+
+# Pacote de implantação gerado (npm run pacote:hostinger) e certificados do banco
+deploy/
+certs/

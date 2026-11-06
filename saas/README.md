@@ -35,8 +35,8 @@ O `.env` do SaaS fica em `saas/.env`, é separado do `.env` do MVP e não é ver
 
 | Comando | O que sobe | Endereço |
 |---|---|---|
-| `npm run dev:api` | API Fastify, reinicia ao salvar | `http://127.0.0.1:3100/health/live` |
-| `npm run dev:web` | Painel React (Vite) | `http://127.0.0.1:5173` |
+| `npm run dev:api` | API Fastify, reinicia ao salvar. **Uma janela só:** uma segunda API sobre o mesmo banco embutido é recusada (trava `saas/.data/pglite.lock`) | `http://127.0.0.1:3100/health/live` |
+| `npm run dev:web` | Painel React (Vite) | `http://127.0.0.1:3000` |
 | `npm run dev:worker` | Worker (sem filas: só registra que está vivo) | — |
 
 - O painel em desenvolvimento repassa `/health` e `/api` para a API local (proxy do Vite). Sem a API, o card
@@ -73,6 +73,7 @@ saas/
 │   ├── db/        # Só servidor: schema Drizzle, migrations e conexão (PostgreSQL ou banco embutido)
 │   └── shared/    # Só servidor: validação de ambiente, logger com redação, encerramento controlado
 ├── infra/docker/  # Reservado para o Docker Compose (ainda não criado)
+├── infra/hostinger/ # Publicação no aplicativo Node.js da Hostinger (pacote, entrada, passo a passo)
 └── docs/          # ESTRUTURA_TECNICA, DECISOES_TECNICAS, SUPABASE_CONFIGURACAO, PLANO_MODULO_WHATSAPP
 ```
 
@@ -88,7 +89,7 @@ uma mensagem que cita a variável, sem repetir o valor.
 
 - **Primeiro acesso:**
   1. `npm run dev:api` e `npm run dev:web`;
-  2. abra `http://127.0.0.1:5173`;
+  2. abra `http://127.0.0.1:3000`;
   3. use **Criar conta**, que cria a conta e a empresa (tipo Admin-Empresa).
 - **Banco:**
   - sem `DATABASE_URL` no `saas/.env`, a API usa um **banco embutido** (PGlite) em `saas/.data/pglite`, ignorado pelo git;
@@ -156,11 +157,57 @@ Menu **Contatos**, com as mesmas listas que aparecem no Envio de Mensagens:
 - **Detalhes:** [docs/ESTRUTURA_TECNICA.md §11](docs/ESTRUTURA_TECNICA.md) e [docs/DECISOES_TECNICAS.md](docs/DECISOES_TECNICAS.md)
   (D-43 e D-44).
 
+## Integrações: Zernio (desde 2026-11-02)
+
+Menu **Integrações**: reúne o **WhatsApp** (instâncias da Evolution Go, logo abaixo dos cards; antes ficava na página
+WhatsApp, e o endereço `/whatsapp` leva para lá) e a **Zernio**. Na Zernio, cada empresa liga a **própria conta** e conecta as
+redes sociais que quiser:
+1. Crie a conta em zernio.com e uma chave em *API Keys*. Cole a chave em **Testar e salvar**: ela é testada, guardada cifrada
+   e só o final aparece.
+2. Clique em **Conectar** na rede: Instagram, Facebook, TikTok, LinkedIn, YouTube, Threads, Pinterest, Google Business
+   ou X. Autorize na Zernio e na rede; você volta para Integrações com o resultado.
+3. Acompanhe as redes conectadas e use **Reconectar** ou **Desconectar** quando precisar.
+
+- **Quem altera:** dono e administradores. Os demais só veem.
+- **Custo:** cobrado pela Zernio na conta da empresa.
+  - As 2 primeiras redes são grátis, contando a conta Zernio inteira, inclusive o que foi conectado direto no painel da Zernio.
+    A mesma rede em dois perfis conta duas vezes. A página Integrações mostra o total que a Zernio conta.
+  - O X exige cartão desde a primeira conta e cobra por post.
+  - Quando a Zernio pede pagamento, o painel diz o motivo e mostra o link da cobrança da Zernio.
+- **Ainda não:** publicar e agendar (página Redes Sociais) e webhooks da Zernio.
+- **Detalhes:** [docs/PLANO_MODULO_ZERNIO.md](docs/PLANO_MODULO_ZERNIO.md), [docs/REFERENCIA_ZERNIO.md](docs/REFERENCIA_ZERNIO.md) e
+  D-46/D-47.
+
+## Publicar na Hostinger (desde 2026-11-01)
+
+Aplicativo Node.js do hPanel (Business ou Cloud), com o banco no Supabase. Um único processo entrega a API e o painel.
+- `npm run producao:segredos`, `npm run producao:migrar` e `npm run producao:admin`: preparam o banco de produção a partir
+  do seu computador. Leem `saas/.env.producao`, que fica fora do git.
+- `npm run pacote:hostinger`: gera `saas/deploy/disparazap-hostinger.zip` para enviar no hPanel. Use Entry file
+  `server.js` e Node.js 24.
+- **Passo a passo completo:** [infra/hostinger/README.md](infra/hostinger/README.md). Decisões: D-45.
+
+## Inbox (desde 2026-11-04)
+
+Conversas do WhatsApp das empresas em três colunas (conversas, conversa, detalhes), no menu **Inbox**. Plano:
+[docs/PLANO_MODULO_INBOX.md](docs/PLANO_MODULO_INBOX.md); peças: [docs/ESTRUTURA_TECNICA.md](docs/ESTRUTURA_TECNICA.md) §16.
+
+- **O recebimento vem desligado:** `INBOX_EVENTS_ENABLED=false` e `INBOX_ACTIVATION_ENABLED=false` (padrão, também na
+  produção). Com elas assim, a API não abre nenhuma conexão com a Evolution e o botão "Receber mensagens na Inbox" fica
+  bloqueado.
+- **Só ligue as duas na homologação autorizada,** com uma instância de teste
+  ([docs/HOMOLOGACAO_I0_EVOLUTION.md](docs/HOMOLOGACAO_I0_EVOLUTION.md), seção 10).
+- **Testes** só com a Evolution simulada, que tem WebSocket (`apps/api/src/testing/evolution-simulator.ts`).
+- **Uma API por vez** no banco embutido (D-51). A Inbox mantém uma conexão aberta com a Evolution e outra com cada painel
+  aberto.
+
 ## O que ainda não existe
 
 - **Autenticação:** 2FA do Super-Admin, recuperação de senha, verificação de e-mail, convites e entrada pelo MyLinksss.
 - **Banco:** conexão com o Supabase.
 - **Infraestrutura:** filas e Docker Compose.
 - **WhatsApp:** webhooks da Evolution e ajuste do limite de instâncias pela tela.
+- **Inbox:** homologação com instância de teste, mídias (I2), etiquetas e notas (I3), equipe e transferência (I4), Instagram e
+  Facebook (I5), comentários (I6), IA e automações (I7 a I9).
 - **Mensagens:** campanhas no servidor (fila, histórico, agendamento), consentimento e descadastro.
 - **Produto:** os demais módulos de negócio. O painel marca essas seções como **Em desenvolvimento**.

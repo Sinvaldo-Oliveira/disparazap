@@ -42,7 +42,8 @@ export interface ServerInstance {
 export interface WhatsAppProvider {
   createInstance(input: { name: string; token: string }): Promise<{ providerInstanceId: string | null }>;
   findInstanceId(name: string): Promise<string | null>;
-  startConnection(token: string): Promise<void>;
+  /** `inboxEvents`: a instância está com a Inbox ligada (o /instance/connect regrava a configuração de eventos) */
+  startConnection(token: string, inboxEvents?: boolean): Promise<void>;
   /** Imagem do QR Code (data URL) ou null quando não há QR (ex.: já conectado) */
   getQrCode(token: string): Promise<string | null>;
   pairWithPhone(token: string, phone: string): Promise<string>;
@@ -57,7 +58,13 @@ export interface WhatsAppProvider {
   sendText(token: string, number: string, text: string): Promise<{ messageId: string | null }>;
   /** Envia uma imagem (bytes em base64, sem prefixo data:) com o texto como legenda. Falhas: as mesmas do sendText */
   sendImage(token: string, number: string, image: { base64: string; caption: string }): Promise<{ messageId: string | null }>;
+  /** Liga (ou volta ao padrão) a entrega dos eventos da Inbox por WebSocket nesta instância */
+  configureInboxEvents(token: string, enabled: boolean): Promise<void>;
 }
+
+/** Categorias de eventos que a Inbox assina (HOMOLOGACAO_I0_EVOLUTION §4) */
+export const INBOX_EVENT_CATEGORIES = ['MESSAGE', 'SEND_MESSAGE', 'READ_RECEIPT', 'CONNECTION'] as const;
+const inboxEventSettings = () => ({ subscribe: [...INBOX_EVENT_CATEGORIES], websocketEnable: 'enabled' });
 
 export interface EvolutionProviderOptions {
   baseUrl: string;
@@ -190,9 +197,10 @@ export function createEvolutionProvider({ baseUrl, globalKey, timeoutMs = 15_000
 
     findInstanceId,
 
-    async startConnection(token) {
-      // Sem webhook: a API ainda não tem endereço público (PLANO_MODULO_WHATSAPP §1); o status é consultado periodicamente
-      await call('POST', '/instance/connect', token, {});
+    async startConnection(token, inboxEvents = false) {
+      // Sem webhook: a API ainda não tem endereço público (PLANO_MODULO_WHATSAPP §1); o status é consultado periodicamente.
+      // O /instance/connect regrava a configuração de eventos: com a Inbox ligada, reconectar não pode desligá-la
+      await call('POST', '/instance/connect', token, inboxEvents ? inboxEventSettings() : {});
     },
 
     async getQrCode(token) {
@@ -240,6 +248,12 @@ export function createEvolutionProvider({ baseUrl, globalKey, timeoutMs = 15_000
     async sendImage(token, number, { base64, caption }) {
       // pkg/sendMessage: "url" que não começa com http(s) é lido como base64 puro (sem "data:...;base64,")
       return messageResult(await send('POST', '/send/media', token, { number, type: 'image', url: base64, caption, delay: 0 }, mediaTimeoutMs));
+    },
+
+    async configureInboxEvents(token, enabled) {
+      // Código-fonte 0.6.1–0.7.2 (instance_service.Connect + UpdateInstanceSettings): numa instância em execução, grava e
+      // aplica as configurações sem reconectar o número. {} volta ao padrão (só MESSAGE, sem canal de entrega)
+      await call('POST', '/instance/connect', token, enabled ? inboxEventSettings() : {});
     },
   };
 }

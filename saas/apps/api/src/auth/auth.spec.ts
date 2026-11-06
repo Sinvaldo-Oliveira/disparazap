@@ -20,7 +20,7 @@ import { createServices, type ApiServices } from '../services.ts';
 import { SuperAdminError, createSuperAdmin } from './super-admin.ts';
 
 // Tudo fictício: domínios .test, banco embutido em memória, nenhuma rede
-const PANEL = 'http://127.0.0.1:5173';
+const PANEL = 'http://127.0.0.1:3000';
 const SUPER_ADMIN_EMAIL = 'super.admin@disparazap.test';
 const PASSWORD = 'senha-forte-de-teste-123';
 
@@ -271,7 +271,7 @@ describe('correções da auditoria do login', () => {
   it('A4: em desenvolvimento, o painel aberto por localhost consegue entrar', async () => {
     const email = uniqueEmail();
     await signup({ email });
-    const response = await post(SIGN_IN_PATH, { email, password: PASSWORD }, { origin: 'http://localhost:5173' });
+    const response = await post(SIGN_IN_PATH, { email, password: PASSWORD }, { origin: 'http://localhost:3000' });
     expect(response.statusCode).toBe(200);
   });
 

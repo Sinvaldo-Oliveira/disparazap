@@ -7,6 +7,9 @@
 | **Base** | ARQUITETURA_SAAS §5.1 (adaptador), §5.2 (endpoints a verificar), §8.3 (`whatsapp_instances`); integração global já pronta (DECISOES_TECNICAS D-25 e D-26) |
 | **Referência da API** | Swagger da versão instalada (W1). Ele diverge do `doc_evolution_go.md` em dois pontos (ver abaixo) |
 
+> **2026-11-02:** a tela do WhatsApp passou para a página **Integrações** (seção logo abaixo dos cards), a pedido do dono do
+> produto. O endereço `/whatsapp` leva para lá; a API e as regras não mudaram.
+
 ## Andamento (2026-11-01)
 
 | Etapa | Situação |

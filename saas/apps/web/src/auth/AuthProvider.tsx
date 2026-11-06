@@ -55,12 +55,9 @@ export function AuthProvider({ api, children }: { api: AuthApi; children: ReactN
   );
 
   const signOut = useCallback(async () => {
-    try {
-      await api.signOut();
-    } finally {
-      // Mesmo se a API falhar, o painel deixa de mostrar dados da sessão
-      setState({ status: 'anonymous' });
-    }
+    // Antes, o painel saía da tela mesmo quando o servidor recusava o logout: a sessão continuava válida
+    await api.signOut();
+    setState({ status: 'anonymous' });
   }, [api]);
 
   const refresh = useCallback(() => setAttempt((n) => n + 1), []);

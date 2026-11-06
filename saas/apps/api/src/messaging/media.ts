@@ -20,8 +20,15 @@ type MediaRow = typeof mediaFiles.$inferSelect;
 
 const toPublic = (row: Pick<MediaRow, 'id' | 'mimeType' | 'sizeBytes'>): MediaFile => mediaFileSchema.parse({ id: row.id, mimeType: row.mimeType, size: row.sizeBytes });
 
+/** Nome do arquivo para a busca da biblioteca: só o nome (sem pasta), sem caracteres de controle, até 120 caracteres */
+export function cleanFileName(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const name = (value.split(/[\\/]/).pop() ?? '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 120);
+  return name || null;
+}
+
 /** Guarda a imagem da empresa. A mesma imagem enviada de novo devolve o registro existente */
-export async function saveMedia(db: AppDatabase, member: Member, bytes: Uint8Array): Promise<MediaFile> {
+export async function saveMedia(db: AppDatabase, member: Member, bytes: Uint8Array, fileName: string | null = null): Promise<MediaFile> {
   requireOperator(member);
   if (!bytes.length) throw new MessagingError(400, 'Arquivo vazio.');
   if (bytes.length > MEDIA_LIMITS.maxBytes) throw new MessagingError(413, 'A imagem pode ter até 5 MB.');
@@ -41,7 +48,7 @@ export async function saveMedia(db: AppDatabase, member: Member, bytes: Uint8Arr
 
   const [row] = await db
     .insert(mediaFiles)
-    .values({ id: randomUUID(), organizationId: member.organizationId, mimeType, sizeBytes: bytes.length, sha256, data: bytes, createdBy: member.userId })
+    .values({ id: randomUUID(), organizationId: member.organizationId, mimeType, sizeBytes: bytes.length, sha256, data: bytes, fileName, createdBy: member.userId })
     .returning({ id: mediaFiles.id, mimeType: mediaFiles.mimeType, sizeBytes: mediaFiles.sizeBytes });
   if (!row) throw new Error('imagem não gravada');
   return toPublic(row);

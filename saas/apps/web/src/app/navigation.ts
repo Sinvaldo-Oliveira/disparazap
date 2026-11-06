@@ -1,4 +1,4 @@
-import { Bot, LayoutDashboard, Megaphone, MessageCircle, Plug, Send, Settings, Share2, Users, Workflow, type LucideIcon } from 'lucide-react';
+import { Bot, Inbox, LayoutDashboard, Megaphone, Plug, Send, Settings, Share2, Users, Workflow, type LucideIcon } from 'lucide-react';
 
 export type ModuleStatus = 'available' | 'in_development';
 
@@ -28,14 +28,14 @@ export const NAVIGATION: readonly NavigationItem[] = [
     plannedFor: 'Disponível',
   },
   {
-    id: 'whatsapp',
-    label: 'WhatsApp',
-    path: '/whatsapp',
-    icon: MessageCircle,
+    id: 'inbox',
+    label: 'Inbox',
+    path: '/inbox',
+    icon: Inbox,
     status: 'available',
-    permission: 'whatsapp:view',
-    summary: 'Conectar números pelo Evolution Go (QR Code ou código de pareamento) e acompanhar o status de cada instância.',
-    plannedFor: 'Disponível: instâncias e conexão',
+    permission: 'inbox:view',
+    summary: 'Conversas com os clientes que escrevem para os números de WhatsApp da empresa: lista, histórico, respostas e confirmações de entrega e leitura. Instagram, Facebook, mídias, IA e automações nas próximas etapas.',
+    plannedFor: 'Disponível: WhatsApp (o recebimento é ligado depois da homologação)',
   },
   {
     id: 'campaigns',
@@ -84,28 +84,28 @@ export const NAVIGATION: readonly NavigationItem[] = [
     icon: Workflow,
     status: 'in_development',
     permission: 'automations:view',
-    summary: 'Agendamentos e acompanhamentos automáticos a partir de eventos.',
-    plannedFor: 'Depois do primeiro MVP SaaS',
+    summary: 'Automações de redes pela Zernio (comentário → DM, menção em story e mais): consulta nesta etapa; criar e ativar nas próximas. Campanhas, filas e acompanhamentos no servidor vêm depois.',
+    plannedFor: 'Etapas A2 a A6 (PLANO_MODULO_AUTOMACOES); campanhas e filas na etapa 9',
   },
   {
     id: 'social',
     label: 'Redes Sociais',
     path: '/redes-sociais',
     icon: Share2,
-    status: 'in_development',
+    status: 'available',
     permission: 'social:view',
-    summary: 'Contas de redes sociais conectadas pela Zernio, conforme o que a documentação oficial confirmar.',
-    plannedFor: 'Depois do primeiro MVP SaaS',
+    summary: 'Publicar, agendar e acompanhar as redes conectadas pela Zernio: visão geral, criar publicação, calendário, histórico, biblioteca de imagens e resultados.',
+    plannedFor: 'Disponível: imagem e texto (vídeo, interações e webhooks nas próximas etapas)',
   },
   {
     id: 'integrations',
     label: 'Integrações',
     path: '/integracoes',
     icon: Plug,
-    status: 'in_development',
+    status: 'available',
     permission: 'integrations:view',
-    summary: 'API REST versionada e webhooks assinados para o MyLinksss e outras plataformas.',
-    plannedFor: 'Etapa 10 do primeiro MVP SaaS',
+    summary: 'Conexões da empresa: WhatsApp pela Evolution Go (instâncias, QR Code e código de pareamento) e redes sociais pela Zernio. API e webhooks para o MyLinksss virão na Etapa 10.',
+    plannedFor: 'Disponível: WhatsApp (Evolution Go) e Zernio (redes sociais); API e webhooks para o MyLinksss na Etapa 10',
   },
   {
     id: 'settings',

@@ -1,19 +1,19 @@
-import { CheckCircle2, KeyRound, LoaderCircle, Plus, QrCode, Smartphone, Trash2, Unplug } from 'lucide-react';
+import { CheckCircle2, Inbox, KeyRound, LoaderCircle, MessageCircle, Plus, QrCode, Smartphone, Trash2, Unplug } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 import {
   INSTANCE_STATUS_LABELS,
   validatePhone,
+  type InboxChannelsResponse,
   type InstanceStatus,
   type PlatformInstanceList,
   type WhatsAppInstance,
   type WhatsAppInstanceList,
 } from '@disparazap/contracts';
-import type { NavigationItem } from '../app/navigation';
 import { useSession } from '../auth/AuthProvider';
 import { Card } from '../components/Card';
-import { PageHeader } from '../components/PageHeader';
 import { StatusBadge, type BadgeTone } from '../components/StatusBadge';
+import type { InboxApi } from '../inbox/inbox-api';
 import type { WhatsAppApi } from '../whatsapp/whatsapp-api';
 
 const STATUS_TONES: Record<InstanceStatus, BadgeTone> = {
@@ -183,7 +183,79 @@ function ConnectPanel({ api, instance, pollMs, onConnected, onClose }: { api: Wh
   );
 }
 
-function InstanceCard({ api, instance, canManage, pollMs, onChanged, onRemoved }: { api: WhatsAppApi; instance: WhatsAppInstance; canManage: boolean; pollMs: number; onChanged: (i: WhatsAppInstance) => void; onRemoved: (id: string) => void }) {
+interface InboxControl {
+  api: InboxApi;
+  state: InboxChannelsResponse;
+  onChanged: (next: InboxChannelsResponse) => void;
+}
+
+/**
+ * Botão "Receber mensagens na Inbox" (PLANO_MODULO_INBOX, I1). Nada é ligado sozinho: só o dono ou um administrador,
+ * com confirmação, e só depois que a plataforma liberar a ativação (homologação P3/P4). O número continua conectado.
+ */
+function InboxReception({ control, instance, canManage }: { control: InboxControl; instance: WhatsAppInstance; canManage: boolean }) {
+  const [confirming, setConfirming] = useState<'on' | 'off' | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const channel = control.state.channels.find((item) => item.id === instance.id);
+  if (!channel) return null;
+  const enabled = Boolean(channel.inboxEnabledAt);
+  const available = control.state.activationAvailable;
+
+  async function apply(next: boolean) {
+    setBusy(true);
+    setError(null);
+    const result = await control.api.setReception(instance.id, next);
+    setBusy(false);
+    setConfirming(null);
+    if (!result.ok) return setError(result.message);
+    control.onChanged(result.data);
+  }
+
+  return (
+    <div className="instance__inbox" role="group" aria-label={`Inbox de ${instance.displayName}`}>
+      <p className="instance__inbox-status">
+        <Inbox aria-hidden="true" />
+        {enabled ? (
+          <>Recebendo mensagens na <Link className="text-link" to="/inbox">Inbox</Link> desde {new Date(channel.inboxEnabledAt ?? '').toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}.</>
+        ) : (
+          'Este número ainda não recebe mensagens na Inbox.'
+        )}
+      </p>
+      {error && <p className="auth-alert" role="alert">{error}</p>}
+      {canManage && confirming === null && (
+        <div className="integration__actions">
+          {enabled ? (
+            <button type="button" className="action-button" disabled={busy} onClick={() => setConfirming('off')}>Parar de receber na Inbox</button>
+          ) : (
+            <button type="button" className="action-button action-button--primary" disabled={busy || !available || instance.status !== 'connected'} onClick={() => setConfirming('on')}>
+              <Inbox aria-hidden="true" /> Receber mensagens na Inbox
+            </button>
+          )}
+          {!enabled && !available && <span className="field__hint">Liberado depois da homologação com uma instância de teste.</span>}
+          {!enabled && available && instance.status !== 'connected' && <span className="field__hint">Conecte o número primeiro.</span>}
+        </div>
+      )}
+      {confirming && (
+        <div className="instance__confirm" role="group" aria-label={confirming === 'on' ? 'Confirmar recebimento na Inbox' : 'Confirmar parada do recebimento'}>
+          <p>
+            {confirming === 'on'
+              ? 'O servidor de WhatsApp passa a enviar a esta plataforma as mensagens deste número, que aparecem na Inbox. O número continua conectado e o celular segue funcionando.'
+              : 'As mensagens novas deste número deixam de chegar à Inbox. As conversas já recebidas continuam lá.'}
+          </p>
+          <div className="integration__actions">
+            <button type="button" className={`action-button ${confirming === 'on' ? 'action-button--primary' : 'action-button--danger'}`} disabled={busy} onClick={() => void apply(confirming === 'on')}>
+              {busy ? 'Aplicando…' : confirming === 'on' ? 'Confirmar' : 'Parar de receber'}
+            </button>
+            <button type="button" className="action-button" disabled={busy} onClick={() => setConfirming(null)}>Cancelar</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InstanceCard({ api, instance, canManage, pollMs, onChanged, onRemoved, inbox }: { api: WhatsAppApi; instance: WhatsAppInstance; canManage: boolean; pollMs: number; onChanged: (i: WhatsAppInstance) => void; onRemoved: (id: string) => void; inbox?: InboxControl }) {
   const [connecting, setConnecting] = useState(false);
   const [confirm, setConfirm] = useState<'logout' | 'delete' | null>(null);
   const [typedName, setTypedName] = useState('');
@@ -278,17 +350,19 @@ function InstanceCard({ api, instance, canManage, pollMs, onChanged, onRemoved }
       )}
 
       {connecting && <ConnectPanel api={api} instance={instance} pollMs={pollMs} onConnected={handleConnected} onClose={() => setConnecting(false)} />}
+      {inbox && !connecting && confirm === null && <InboxReception control={inbox} instance={instance} canManage={canManage} />}
     </li>
   );
 }
 
-function CompanyInstances({ api, pollMs, isSuperAdmin }: { api: WhatsAppApi; pollMs: number; isSuperAdmin: boolean }) {
+function CompanyInstances({ api, pollMs, isSuperAdmin, inboxApi }: { api: WhatsAppApi; pollMs: number; isSuperAdmin: boolean; inboxApi?: InboxApi }) {
   const [data, setData] = useState<WhatsAppInstanceList | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [inbox, setInbox] = useState<InboxChannelsResponse | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -299,6 +373,16 @@ function CompanyInstances({ api, pollMs, isSuperAdmin }: { api: WhatsAppApi; pol
     });
     return () => controller.abort();
   }, [api]);
+
+  // Situação da Inbox em cada instância (se a Inbox não responder, o botão simplesmente não aparece)
+  useEffect(() => {
+    if (!inboxApi) return;
+    const controller = new AbortController();
+    void inboxApi.channels(controller.signal).then((result) => {
+      if (!controller.signal.aborted && result.ok) setInbox(result.data);
+    });
+    return () => controller.abort();
+  }, [inboxApi]);
 
   const replace = useCallback((next: WhatsAppInstance) => setData((current) => current && { ...current, instances: current.instances.map((item) => (item.id === next.id ? next : item)) }), []);
   const removeOne = useCallback((id: string) => setData((current) => current && { ...current, instances: current.instances.filter((item) => item.id !== id) }), []);
@@ -343,7 +427,16 @@ function CompanyInstances({ api, pollMs, isSuperAdmin }: { api: WhatsAppApi; pol
       ) : (
         <ul className="instance-list">
           {data.instances.map((instance) => (
-            <InstanceCard key={instance.id} api={api} instance={instance} canManage={data.canManage && ready} pollMs={pollMs} onChanged={replace} onRemoved={removeOne} />
+            <InstanceCard
+              key={instance.id}
+              api={api}
+              instance={instance}
+              canManage={data.canManage && ready}
+              pollMs={pollMs}
+              onChanged={replace}
+              onRemoved={removeOne}
+              {...(inboxApi && inbox ? { inbox: { api: inboxApi, state: inbox, onChanged: setInbox } } : {})}
+            />
           ))}
         </ul>
       )}
@@ -416,7 +509,11 @@ function PlatformInstances({ api }: { api: WhatsAppApi }) {
   );
 }
 
-export function WhatsAppPage({ item, api, pollMs = 3000 }: { item: NavigationItem; api: WhatsAppApi; pollMs?: number }) {
+/**
+ * WhatsApp das empresas (instâncias da Evolution Go: criar, QR Code, pareamento, desconectar, excluir), mostrado como seção
+ * da página Integrações. Até 2026-11-02 era a página /whatsapp, que agora leva para /integracoes#whatsapp.
+ */
+export function WhatsAppIntegration({ api, pollMs = 3000, inboxApi }: { api: WhatsAppApi; pollMs?: number; inboxApi?: InboxApi }) {
   const session = useSession();
   const isSuperAdmin = session.userType === 'super_admin';
   // Quem não tem empresa (Super-Admin da plataforma) só acompanha: o texto não pode falar em "sua empresa".
@@ -425,14 +522,20 @@ export function WhatsAppPage({ item, api, pollMs = 3000 }: { item: NavigationIte
     : 'Acompanhe as instâncias de WhatsApp de todas as empresas da plataforma.';
 
   return (
-    <>
-      <PageHeader title="WhatsApp" icon={item.icon} description={description} />
-      {session.organization ? <CompanyInstances api={api} pollMs={pollMs} isSuperAdmin={isSuperAdmin} /> : null}
+    <section id="whatsapp" className="integration-group" aria-label="WhatsApp">
+      <div className="integration-group__head">
+        <MessageCircle className="integration-group__icon" aria-hidden="true" />
+        <h2>WhatsApp · Evolution Go</h2>
+      </div>
+      <p className="integration-group__description">{description}</p>
+      {session.organization ? (
+        <CompanyInstances api={api} pollMs={pollMs} isSuperAdmin={isSuperAdmin} {...(inboxApi && session.organization.role !== 'viewer' ? { inboxApi } : {})} />
+      ) : null}
       {isSuperAdmin && <PlatformInstances api={api} />}
       <p className="field__hint whatsapp__note">
         <CheckCircle2 aria-hidden="true" /> Com o número conectado, envie mensagens em{' '}
         <Link className="text-link" to="/envio-de-mensagens">Envio de Mensagens</Link>.
       </p>
-    </>
+    </section>
   );
 }

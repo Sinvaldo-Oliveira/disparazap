@@ -1,3 +1,5 @@
+// Primeiro import: precisa valer antes de qualquer schema ser criado
+import './zod-setup';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router';

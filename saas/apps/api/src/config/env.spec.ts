@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { IN_MEMORY } from '@disparazap/db';
 import { ConfigError } from '@disparazap/shared';
-import { DEFAULT_EMBEDDED_DIR, DEV_PANEL_ORIGIN, databaseOptions, loadApiConfig } from './env.ts';
+import { DEFAULT_EMBEDDED_DIR, DEV_PANEL_ORIGIN, databaseOptions, loadApiConfig, trustedOrigins } from './env.ts';
 
 function configError(env: Record<string, string>): string {
   try {
@@ -22,6 +22,9 @@ describe('configuração da API', () => {
       API_PORT: 3100,
       API_CORS_ORIGINS: [],
       API_SHUTDOWN_TIMEOUT_MS: 10_000,
+      // Sem proxy reverso e sem painel: a API sozinha, como em desenvolvimento
+      API_TRUST_PROXY: false,
+      WEB_DIST_DIR: undefined,
       DATABASE_URL: undefined,
       DATABASE_CA_FILE: undefined,
       DATABASE_POOL_MAX: 10,
@@ -31,6 +34,12 @@ describe('configuração da API', () => {
       AUTH_TRUSTED_ORIGINS: [],
       AUTH_SIGNUP_ENABLED: true,
       SUPER_ADMIN_EMAIL: undefined,
+      // Inbox desligada por padrão: nada se conecta à Evolution nem altera instâncias
+      INBOX_EVENTS_ENABLED: false,
+      INBOX_ACTIVATION_ENABLED: false,
+      INBOX_SOCIAL_SEND_ENABLED: false,
+      // Automações: nada é criado nem ativado na Zernio até a homologação (decisão A5)
+      AUTOMATIONS_WRITE_ENABLED: false,
     });
     expect(databaseOptions(loadApiConfig({}))).toEqual({ kind: 'embedded', dataDir: DEFAULT_EMBEDDED_DIR });
     expect(databaseOptions(loadApiConfig({ NODE_ENV: 'test' }))).toEqual({ kind: 'embedded', dataDir: IN_MEMORY });
@@ -100,5 +109,24 @@ describe('configuração da API', () => {
     expect(message).toContain('API_PORT');
     expect(message).toContain('LOG_LEVEL');
     expect(message).not.toContain('porta-com-segredo-123');
+  });
+});
+
+describe('origens confiáveis em desenvolvimento', () => {
+  it('o painel de desenvolvimento (porta 3000, com 127.0.0.1 e localhost) é aceito fora de produção, mesmo com AUTH_BASE_URL em outro endereço', () => {
+    const dev = loadApiConfig({ AUTH_BASE_URL: 'http://127.0.0.1:5173' });
+    expect(trustedOrigins(dev)).toEqual(expect.arrayContaining(['http://127.0.0.1:3000', 'http://localhost:3000']));
+  });
+
+  it('em produção só vale o que está configurado (sem o endereço de desenvolvimento)', () => {
+    const prod = loadApiConfig({
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgresql://usuario:senha@banco.exemplo.test:5432/postgres',
+      DATABASE_CA_FILE: 'certificado-de-exemplo.crt',
+      AUTH_SECRET: 'segredo-de-teste-com-mais-de-32-caracteres',
+      SECRETS_MASTER_KEY: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      AUTH_BASE_URL: 'https://painel.exemplo.test',
+    });
+    expect(trustedOrigins(prod)).toEqual(['https://painel.exemplo.test']);
   });
 });

@@ -1,10 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/pglite/migrator';
 import { describe, expect, it } from 'vitest';
-import { IN_MEMORY, MIGRATIONS_FOLDER, openDatabase } from './client.ts';
+import { EMBEDDED_LOCKED_CODE, IN_MEMORY, MIGRATIONS_FOLDER, openDatabase } from './client.ts';
 
 describe('banco embutido (desenvolvimento e testes)', () => {
   it('abre numa pasta cujas pastas-mãe ainda não existem (projeto recém-baixado) e guarda os dados entre aberturas', async () => {
@@ -23,6 +23,24 @@ describe('banco embutido (desenvolvimento e testes)', () => {
     }
   }, 120_000);
 
+  it('um processo por pasta: com o banco aberto, outra abertura é recusada sem tocar nele; trava de processo encerrado é substituída', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'dz-db-lock-'));
+    const dataDir = join(base, '.data', 'pglite');
+    try {
+      const first = await openDatabase({ kind: 'embedded', dataDir });
+      await expect(openDatabase({ kind: 'embedded', dataDir })).rejects.toMatchObject({ code: EMBEDDED_LOCKED_CODE });
+      await first.close();
+      expect(existsSync(`${dataDir}.lock`)).toBe(false);
+      // Trava esquecida por um processo que já terminou (PID que não existe)
+      writeFileSync(`${dataDir}.lock`, '999999');
+      const again = await openDatabase({ kind: 'embedded', dataDir });
+      expect(readFileSync(`${dataDir}.lock`, 'utf8')).toBe(String(process.pid));
+      await again.close();
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  }, 120_000);
+
   it('aplica as migrations: tabelas nos esquemas app, identity e platform, nenhuma no public', async () => {
     const handle = await openDatabase({ kind: 'embedded', dataDir: IN_MEMORY });
     try {
@@ -32,9 +50,19 @@ describe('banco embutido (desenvolvimento e testes)', () => {
       expect(rows.map((row) => `${row.table_schema}.${row.table_name}`)).toEqual([
         'app.contact_lists',
         'app.contacts',
+        'app.inbox_contact_identities',
+        'app.inbox_contacts',
+        'app.inbox_conversation_events',
+        'app.inbox_conversations',
+        'app.inbox_messages',
+        'app.inbox_pending_receipts',
+        'app.inbox_reception_gaps',
+        'app.inbox_social_sends',
         'app.media_files',
         'app.message_templates',
+        'app.social_posts',
         'app.whatsapp_instances',
+        'app.zernio_connections',
         'identity.accounts',
         'identity.invitations',
         'identity.members',

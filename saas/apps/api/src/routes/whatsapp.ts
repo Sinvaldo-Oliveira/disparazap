@@ -94,8 +94,16 @@ export const whatsappRoutes: FastifyPluginAsync<WhatsAppRoutesOptions> = async (
 
   app.delete('/instances/:id', async (request, reply) => {
     await handle(async (req, member) => {
-      await deleteInstance(context, member, param(req));
-      req.log.info({ acao: 'whatsapp.instancia.excluida', ator: member.userId, instancia: param(req) }, 'instância excluída');
+      try {
+        const result = await deleteInstance(context, member, param(req));
+        req.log.info({ acao: 'whatsapp.instancia.excluida', ator: member.userId, instancia: param(req), ja_removida_no_servidor: result.goneOnServer, status_servidor: result.upstreamStatus }, 'instância excluída');
+      } catch (err) {
+        // Diagnóstico: o status da Evolution vai só para o log (a tela recebe a mensagem fixa)
+        if (err instanceof WhatsAppError && err.upstreamStatus !== null) {
+          req.log.warn({ acao: 'whatsapp.exclusao.recusada', ator: member.userId, instancia: param(req), status_servidor: err.upstreamStatus }, 'o servidor de WhatsApp recusou a exclusão');
+        }
+        throw err;
+      }
       return null;
     })(request, reply);
     return reply.sent ? reply : reply.status(204).send();

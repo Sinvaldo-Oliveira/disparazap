@@ -21,7 +21,7 @@ import { loadApiConfig } from '../config/env.ts';
 import { createServices, type ApiServices } from '../services.ts';
 
 // Tudo fictício: Evolution Go simulada nesta máquina, banco em memória, nenhuma chave real
-const PANEL = 'http://127.0.0.1:5173';
+const PANEL = 'http://127.0.0.1:3000';
 const SUPER_ADMIN_EMAIL = 'super.admin@disparazap.test';
 const PASSWORD = 'senha-forte-de-teste-123';
 const GOOD_KEY = 'chave-global-ficticia-AB12';

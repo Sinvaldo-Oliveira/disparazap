@@ -38,8 +38,32 @@ const booleanFlag = (fallback: boolean) =>
     .optional()
     .transform((value) => (value === undefined ? fallback : value === 'true'));
 
+/** Endereços internos (proxy na mesma máquina ou na rede privada do provedor), no formato do Fastify/proxy-addr */
+export const PRIVATE_PROXY_RANGES = 'loopback,linklocal,uniquelocal';
+
+/**
+ * Proxy reverso: false (padrão, sem proxy); true = confia no X-Forwarded-For só quando quem conecta é um endereço
+ * interno (loopback ou rede privada); ou a lista exata de IPs/CIDRs do proxy. Quem chega direto pela internet
+ * nunca consegue escolher o próprio IP.
+ */
+const trustProxySchema = z
+  .string()
+  .trim()
+  .optional()
+  .transform((value, ctx): false | string => {
+    if (!value || value === 'false') return false;
+    if (value === 'true') return PRIVATE_PROXY_RANGES;
+    const items = value.split(',').map((item) => item.trim()).filter(Boolean);
+    const valid = items.length > 0 && items.every((item) => /^[0-9a-fA-F:.]+(\/\d{1,3})?$/.test(item) || ['loopback', 'linklocal', 'uniquelocal'].includes(item));
+    if (!valid) {
+      ctx.addIssue({ code: 'custom', message: 'use false, true ou a lista de IPs/CIDRs do proxy, separados por vírgula' });
+      return z.NEVER;
+    }
+    return items.join(',');
+  });
+
 /** Origem do painel em desenvolvimento (o Vite repassa /api para a API: mesma origem para o navegador) */
-export const DEV_PANEL_ORIGIN = 'http://127.0.0.1:5173';
+export const DEV_PANEL_ORIGIN = 'http://127.0.0.1:3000';
 
 /** Pasta padrão do banco embutido em desenvolvimento: saas/.data/pglite (ignorada pelo git) */
 export const DEFAULT_EMBEDDED_DIR = fileURLToPath(new URL('../../../../.data/pglite', import.meta.url));
@@ -52,6 +76,10 @@ export const apiEnvSchema = z
     API_PORT: z.coerce.number().int().min(0).max(65535).default(3100),
     API_CORS_ORIGINS: originListSchema,
     API_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60_000).default(10_000),
+    /** Atrás de um proxy reverso (ex.: Hostinger): de quem aceitar o X-Forwarded-For (veja trustProxySchema) */
+    API_TRUST_PROXY: trustProxySchema,
+    /** Pasta do painel compilado (apps/web/dist): a API passa a servir o painel na mesma origem. Vazio = só a API */
+    WEB_DIST_DIR: optionalText,
 
     // Banco: PostgreSQL (Supabase) quando DATABASE_URL está preenchido; senão, banco embutido (só fora de produção)
     DATABASE_URL: optionalText.pipe(
@@ -71,6 +99,17 @@ export const apiEnvSchema = z
     AUTH_TRUSTED_ORIGINS: originListSchema,
     AUTH_SIGNUP_ENABLED: booleanFlag(true),
     SUPER_ADMIN_EMAIL: optionalText.pipe(z.email('use um e-mail válido').optional()),
+
+    // Inbox (PLANO_MODULO_INBOX, I1). DESLIGADOS por padrão: com eles desligados a API nunca se conecta ao WebSocket da
+    // Evolution nem altera instâncias. Só a homologação autorizada (HOMOLOGACAO_I0_EVOLUTION, P2 a P4) os liga.
+    /** Receber eventos da Evolution Go por WebSocket (conexão de saída, com a chave global) */
+    INBOX_EVENTS_ENABLED: booleanFlag(false),
+    /** Permitir o botão "Receber mensagens na Inbox" (POST /instance/connect na instância da empresa) */
+    INBOX_ACTIVATION_ENABLED: booleanFlag(false),
+    /** Envio de respostas humanas pelo Instagram (Z3.2). Desligado até a migração 0008 e a homologação autorizada */
+    INBOX_SOCIAL_SEND_ENABLED: booleanFlag(false),
+    /** Criar, alterar, ativar e pausar automações na Zernio (PLANO_MODULO_AUTOMACOES, decisão A5). Desligado até a homologação */
+    AUTOMATIONS_WRITE_ENABLED: booleanFlag(false),
 
     // Chave-mestra do cofre de credenciais (AES-256-GCM): 32 bytes em base64url, só no saas/.env
     SECRETS_MASTER_KEY: optionalText.pipe(
@@ -110,6 +149,9 @@ export function trustedOrigins(config: ApiConfig): string[] {
   if (config.NODE_ENV !== 'production') {
     const base = new URL(config.AUTH_BASE_URL);
     if (base.hostname === '127.0.0.1') list.add(`${base.protocol}//localhost${base.port ? `:${base.port}` : ''}`);
+    // Painel de desenvolvimento (porta 3000) aceito mesmo que o .env ainda aponte para outro endereço
+    list.add(DEV_PANEL_ORIGIN);
+    list.add(DEV_PANEL_ORIGIN.replace('127.0.0.1', 'localhost'));
   }
   return [...list];
 }

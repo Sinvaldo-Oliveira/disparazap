@@ -26,7 +26,7 @@ import {
   updateContact,
   updateContactList,
 } from '../messaging/contact-lists.ts';
-import { readMedia, saveMedia } from '../messaging/media.ts';
+import { cleanFileName, readMedia, saveMedia } from '../messaging/media.ts';
 import { sendText } from '../messaging/send-text.ts';
 import { createTemplate, deleteTemplate, listTemplates, updateTemplate } from '../messaging/templates.ts';
 import { registerOriginGuard } from '../plugins/origin-guard.ts';
@@ -169,7 +169,8 @@ export const messagingRoutes: FastifyPluginAsync<MessagingRoutesOptions> = async
     const result = await handle(async (req, member) => {
       if (!Buffer.isBuffer(req.body)) throw new MessagingError(415, 'Use uma imagem JPG, PNG ou WebP.');
       limitWrites(member);
-      const saved = await saveMedia(context.db, member, req.body);
+      // Nome do arquivo opcional (?name=), para a busca na biblioteca de mídia das Redes Sociais
+      const saved = await saveMedia(context.db, member, req.body, cleanFileName((req.query as { name?: unknown }).name));
       req.log.info({ acao: 'mensagens.imagem.enviada', ator: member.userId, imagem: saved.id, bytes: saved.size }, 'imagem enviada');
       return saved;
     })(request, reply);

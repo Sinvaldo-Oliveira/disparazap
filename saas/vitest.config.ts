@@ -29,6 +29,10 @@ export default defineConfig({
           name: 'web',
           environment: 'jsdom',
           include: ['apps/web/src/**/*.spec.{ts,tsx}'],
+          // Sob a carga da suíte inteira (API e painel em paralelo), 5 s não bastam para algumas telas grandes
+          testTimeout: 20_000,
+          // Espera maior nos testes da tela (veja o arquivo)
+          setupFiles: ['apps/web/vitest.setup.ts'],
         },
       },
     ],

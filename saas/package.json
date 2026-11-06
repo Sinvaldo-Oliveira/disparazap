@@ -26,7 +26,11 @@
     "admin:create": "npm run admin:create -w @disparazap/api",
     "db:generate": "npm run generate -w @disparazap/db",
     "db:check": "npm run check -w @disparazap/db",
-    "db:migrate": "npm run migrate -w @disparazap/db"
+    "db:migrate": "npm run migrate -w @disparazap/db",
+    "pacote:hostinger": "npm run build && node infra/hostinger/empacotar.mjs",
+    "producao:segredos": "node infra/hostinger/producao.mjs segredos",
+    "producao:migrar": "node infra/hostinger/producao.mjs migrar",
+    "producao:admin": "node infra/hostinger/producao.mjs admin"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.2",

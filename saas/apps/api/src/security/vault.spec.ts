@@ -31,4 +31,15 @@ describe('cofre de credenciais (AES-256-GCM)', () => {
     expect(() => new Vault(randomBytes(16))).toThrow(VaultError);
     expect(lastFour('abcdefgh1234')).toBe('1234');
   });
+
+  it('assina com subchave por finalidade: mesma entrada, mesma assinatura; finalidade, dado ou chave-mestra diferentes, outra', () => {
+    const master = key();
+    const vault = new Vault(master);
+    const signature = vault.sign('zernio-connect', 'empresa|usuario|instagram|1');
+    expect(signature).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(new Vault(master).sign('zernio-connect', 'empresa|usuario|instagram|1')).toBe(signature);
+    expect(vault.sign('outra-finalidade', 'empresa|usuario|instagram|1')).not.toBe(signature);
+    expect(vault.sign('zernio-connect', 'empresa|usuario|facebook|1')).not.toBe(signature);
+    expect(new Vault(key()).sign('zernio-connect', 'empresa|usuario|instagram|1')).not.toBe(signature);
+  });
 });

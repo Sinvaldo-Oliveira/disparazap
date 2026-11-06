@@ -30,6 +30,7 @@ export const MESSAGES = {
   invalidCredentials: 'E-mail ou senha incorretos.',
   tooManyAttempts: 'Muitas tentativas seguidas. Aguarde um minuto e tente de novo.',
   forbidden: 'A verificação de segurança recusou o pedido. Recarregue a página e tente de novo.',
+  signOutFailed: 'Não foi possível sair agora: sua sessão continua ativa. Recarregue a página e tente de novo.',
   offline: 'Não foi possível falar com o servidor. Verifique sua conexão e tente de novo.',
   generic: 'Não foi possível concluir agora. Tente de novo em instantes.',
 } as const;
@@ -86,6 +87,13 @@ export const httpAuthApi: AuthApi = {
   },
 
   async signOut() {
-    await fetch(SIGN_OUT_PATH, { method: 'POST', headers: JSON_HEADERS, credentials: 'same-origin', body: '{}' });
+    let response: Response;
+    try {
+      response = await fetch(SIGN_OUT_PATH, { method: 'POST', headers: JSON_HEADERS, credentials: 'same-origin', body: '{}' });
+    } catch {
+      throw new Error(MESSAGES.signOutFailed);
+    }
+    // Sem confirmação do servidor a sessão continua válida: não dá para dizer que saiu
+    if (!response.ok) throw new Error(MESSAGES.signOutFailed);
   },
 };

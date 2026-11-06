@@ -10,17 +10,26 @@ const MAX_BODY_BYTES = 1024 * 1024;
 export interface HttpResponse {
   status: number;
   body: string;
+  /** Cabeçalhos da resposta (ex.: Retry-After da Zernio) */
+  headers?: Readonly<Record<string, string | string[] | undefined>>;
 }
+
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 /** GET simples, sem seguir redirecionamentos (a chave vai no cabeçalho) e com tempo-limite */
 export function httpGet(url: URL, headers: Record<string, string>, timeoutMs: number): Promise<HttpResponse> {
   return httpRequest('GET', url, headers, undefined, timeoutMs);
 }
 
-/** Pedido HTTP com corpo JSON opcional, sem seguir redirecionamentos e com tempo-limite */
-export function httpRequest(method: 'GET' | 'POST' | 'DELETE', url: URL, headers: Record<string, string>, body: unknown, timeoutMs: number): Promise<HttpResponse> {
+/**
+ * Pedido HTTP sem seguir redirecionamentos e com tempo-limite. O corpo é JSON, ou bytes crus (Uint8Array) quando é um
+ * arquivo: aí o tipo vai no cabeçalho content-type passado por quem chama.
+ */
+export function httpRequest(method: HttpMethod, url: URL, headers: Record<string, string>, body: unknown, timeoutMs: number): Promise<HttpResponse> {
   const transport = url.protocol === 'https:' ? https : http;
-  const payload = body === undefined ? undefined : JSON.stringify(body);
+  const raw = body instanceof Uint8Array;
+  const payload: string | Uint8Array | undefined = body === undefined ? undefined : raw ? body : JSON.stringify(body);
+  const length = payload === undefined ? 0 : typeof payload === 'string' ? Buffer.byteLength(payload) : payload.byteLength;
   return new Promise((resolve, reject) => {
     const req = transport.request(
       url,
@@ -28,7 +37,7 @@ export function httpRequest(method: 'GET' | 'POST' | 'DELETE', url: URL, headers
         method,
         headers: {
           accept: 'application/json',
-          ...(payload !== undefined ? { 'content-type': 'application/json', 'content-length': String(Buffer.byteLength(payload)) } : {}),
+          ...(payload !== undefined ? { ...(raw ? {} : { 'content-type': 'application/json' }), 'content-length': String(length) } : {}),
           ...headers,
         },
         timeout: timeoutMs,
@@ -45,7 +54,7 @@ export function httpRequest(method: 'GET' | 'POST' | 'DELETE', url: URL, headers
           }
           chunks.push(chunk);
         });
-        res.on('end', () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8') }));
+        res.on('end', () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8'), headers: res.headers }));
         res.on('error', reject);
       },
     );

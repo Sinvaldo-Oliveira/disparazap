@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes } from 'node:crypto';
 
 /** Segredo cifrado como fica no banco (todos os campos em base64) */
 export interface SealedSecret {
@@ -43,6 +43,15 @@ export class Vault {
       authTag: cipher.getAuthTag().toString('base64'),
       keyVersion: this.keyVersion,
     };
+  }
+
+  /**
+   * Assinatura HMAC-SHA256 (base64url) com uma subchave derivada da chave-mestra para cada finalidade (HKDF):
+   * a chave-mestra nunca assina diretamente, e uma assinatura feita para uma finalidade não vale para outra.
+   */
+  sign(purpose: string, data: string): string {
+    const subkey = Buffer.from(hkdfSync('sha256', this.#key, Buffer.alloc(0), `dz-sign:${purpose}`, 32));
+    return createHmac('sha256', subkey).update(data, 'utf8').digest('base64url');
   }
 
   open(sealed: SealedSecret, context: string): string {

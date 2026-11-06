@@ -348,7 +348,7 @@ function Wizard({ item, whatsappApi, messagingApi, readSpreadsheet, wait, random
             {instancesError && <p className="auth-alert" role="alert">{instancesError}</p>}
             {instances && instances.length === 0 ? (
               <p className="card__text">
-                Sua empresa ainda não tem instância. <Link className="text-link" to="/whatsapp">Crie e conecte uma na página WhatsApp</Link>.
+                Sua empresa ainda não tem instância. <Link className="text-link" to={{ pathname: '/integracoes', hash: '#whatsapp' }}>Crie e conecte uma em Integrações</Link>.
               </p>
             ) : (
               <div className="field">
@@ -373,7 +373,7 @@ function Wizard({ item, whatsappApi, messagingApi, readSpreadsheet, wait, random
                     {instance.status !== 'connected' && (
                       <>
                         {' · '}
-                        <Link className="text-link" to="/whatsapp">conectar na página WhatsApp</Link>
+                        <Link className="text-link" to={{ pathname: '/integracoes', hash: '#whatsapp' }}>conectar em Integrações</Link>
                       </>
                     )}
                   </p>

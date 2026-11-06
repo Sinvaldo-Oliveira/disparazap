@@ -1,10 +1,11 @@
-import type { FastifyError, FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyError, FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { PROBLEM_CONTENT_TYPE, type ProblemDetails } from '@disparazap/contracts';
 import { pathOnly } from './logger.ts';
 
 const TITLES: Readonly<Record<number, string>> = {
   400: 'Requisição inválida',
   401: 'Não autenticado',
+  402: 'Pagamento necessário',
   403: 'Acesso negado',
   404: 'Recurso não encontrado',
   405: 'Método não permitido',
@@ -28,11 +29,14 @@ export function problem(request: FastifyRequest, status: number, detail?: string
   };
 }
 
+/** Antes do 404: dá a chance de responder (ex.: arquivos do painel). undefined = segue para o 404 */
+export type NotFoundFallback = (request: FastifyRequest, reply: FastifyReply) => FastifyReply | undefined;
+
 /**
  * Toda resposta de erro sai em RFC 9457 com título fixo por status.
  * A mensagem original do erro e o stack trace ficam só no log do servidor.
  */
-export function registerErrorHandling(app: FastifyInstance): void {
+export function registerErrorHandling(app: FastifyInstance, fallback?: NotFoundFallback): void {
   app.setErrorHandler<FastifyError>((error, request, reply) => {
     const status = error.statusCode !== undefined && error.statusCode >= 400 && error.statusCode < 600 ? error.statusCode : 500;
     if (status >= 500) request.log.error({ err: error }, 'erro não tratado');
@@ -41,5 +45,5 @@ export function registerErrorHandling(app: FastifyInstance): void {
     return reply.status(status).type(PROBLEM_CONTENT_TYPE).send(problem(request, status, detail));
   });
 
-  app.setNotFoundHandler((request, reply) => reply.status(404).type(PROBLEM_CONTENT_TYPE).send(problem(request, 404)));
+  app.setNotFoundHandler((request, reply) => fallback?.(request, reply) ?? reply.status(404).type(PROBLEM_CONTENT_TYPE).send(problem(request, 404)));
 }

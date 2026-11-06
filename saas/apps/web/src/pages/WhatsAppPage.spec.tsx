@@ -5,6 +5,7 @@ import type { SessionInfo, WhatsAppInstance, WhatsAppInstanceList } from '@dispa
 import { App } from '../app/App';
 import type { AuthApi } from '../auth/auth-api';
 import type { WhatsAppApi } from '../whatsapp/whatsapp-api';
+import type { ZernioApi } from '../integrations/zernio-api';
 
 afterEach(cleanup);
 
@@ -44,14 +45,22 @@ function fakeApi(initial: WhatsAppInstanceList, overrides: Partial<WhatsAppApi> 
   };
 }
 
+// Zernio sem configurar: a seção dela fica quieta e não atrapalha os testes do WhatsApp
+const zernioIdle = {
+  status: vi.fn(async () => ({ ok: true as const, data: { available: true, configured: false, status: null, keyLast4: null, accountName: null, profileName: null, lastCheckAt: null, canManage: false } })),
+  accounts: vi.fn(async () => ({ ok: false as const, message: 'A integração com a Zernio ainda não foi configurada.', status: 409 })),
+} as unknown as ZernioApi;
+
+/** O endereço antigo /whatsapp leva à seção WhatsApp da página Integrações */
 async function openWhatsApp(session: SessionInfo, whatsappApi: WhatsAppApi) {
   const authApi = { getSession: vi.fn(async () => session), signIn: vi.fn(), signUp: vi.fn(), signOut: vi.fn(async () => {}) } as unknown as AuthApi;
   render(
     <MemoryRouter initialEntries={['/whatsapp']}>
-      <App authApi={authApi} whatsappApi={whatsappApi} whatsappPollMs={10} fetchHealth={async () => ({ status: 'ok', service: 'x', timestamp: '2026-11-01T00:00:00.000Z' })} fetchReady={async () => true} />
+      <App authApi={authApi} whatsappApi={whatsappApi} zernioApi={zernioIdle} whatsappPollMs={10} fetchHealth={async () => ({ status: 'ok', service: 'x', timestamp: '2026-11-01T00:00:00.000Z' })} fetchReady={async () => true} />
     </MemoryRouter>,
   );
-  await screen.findByRole('heading', { level: 1, name: 'WhatsApp' });
+  await screen.findByRole('heading', { level: 1, name: 'Integrações' });
+  await screen.findByRole('region', { name: 'WhatsApp' });
 }
 
 const company = async () => within((await screen.findByRole('heading', { name: /Instâncias da empresa/ })).closest('section') as HTMLElement);

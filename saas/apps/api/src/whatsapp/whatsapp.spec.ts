@@ -26,7 +26,7 @@ import { EvolutionSimulator } from '../testing/evolution-simulator.ts';
 import { classifySendFailure, phoneFromJid } from '../integrations/whatsapp-provider.ts';
 
 // Tudo fictício: Evolution Go simulada nesta máquina, banco em memória, números de exemplo
-const PANEL = 'http://127.0.0.1:5173';
+const PANEL = 'http://127.0.0.1:3000';
 const PASSWORD = 'senha-forte-de-teste-123';
 const GLOBAL_KEY = 'chave-global-ficticia-WA01';
 const SUPER_ADMIN_EMAIL = 'super.admin@disparazap.test';
@@ -286,5 +286,53 @@ describe('falhas da Evolution Go', () => {
     expect(problem.detail).toBe('O servidor de WhatsApp não respondeu. Tente de novo em instantes.');
     expect(JSON.stringify(problem)).not.toMatch(/127\.0\.0\.1|ECONNREFUSED/);
     await sim.start();
+  });
+});
+
+describe('exclusão recusada pela Evolution (auditoria de 2026-11-04)', () => {
+  let createdId = '';
+
+  beforeAll(async () => {
+    // O teste anterior sobe o simulador em outra porta: a integração precisa do endereço atual
+    const saved = await call('PUT', EVOLUTION_SETTINGS_PATH, superCookie, { name: 'Servidor principal', baseUrl: sim.url, status: 'active', apiKey: GLOBAL_KEY });
+    expect(saved.statusCode).toBe(200);
+    // Empresa B pode ter uma instância de um teste anterior (limite de 1): sai antes, pelo próprio simulador
+    for (const item of whatsappInstanceListSchema.parse((await call('GET', WHATSAPP_INSTANCES_PATH, ownerB)).json()).instances) {
+      expect((await call('DELETE', whatsappInstancePath(item.id), ownerB)).statusCode).toBe(204);
+    }
+  });
+
+  it('se o servidor recusa e a instância ainda existe lá, nada é apagado aqui e a tela diz isso (sem o status nem o texto da Evolution)', async () => {
+    const created = whatsappInstanceSchema.parse((await call('POST', WHATSAPP_INSTANCES_PATH, ownerB, { displayName: 'Loja B' })).json());
+    createdId = created.id;
+    const [row] = await services.database.db.select().from(whatsappInstances).where(eq(whatsappInstances.id, created.id));
+    expect(sim.instances.has(row?.providerInstanceId ?? '')).toBe(true);
+
+    sim.failNextDelete = true;
+    const response = await call('DELETE', whatsappInstancePath(created.id), ownerB);
+    const problem = expectProblem(response, 502);
+    expect(problem.detail).toContain('Nada foi apagado aqui');
+    expect(response.body).not.toContain('falha simulada');
+    expect(sim.instances.has(row?.providerInstanceId ?? '')).toBe(true);
+    const [after] = await services.database.db.select().from(whatsappInstances).where(eq(whatsappInstances.id, created.id));
+    expect(after?.deletedAt).toBeNull();
+  });
+
+  it('nova tentativa com o servidor normal exclui de vez', async () => {
+    const [row] = await services.database.db.select().from(whatsappInstances).where(eq(whatsappInstances.id, createdId));
+    expect((await call('DELETE', whatsappInstancePath(createdId), ownerB)).statusCode).toBe(204);
+    expect(sim.instances.has(row?.providerInstanceId ?? '')).toBe(false);
+    const [after] = await services.database.db.select().from(whatsappInstances).where(eq(whatsappInstances.id, createdId));
+    expect(after?.deletedAt).not.toBeNull();
+  });
+
+  it('se o servidor recusa mas a instância já não existe lá, a exclusão segue aqui (não prende a empresa)', async () => {
+    const created = whatsappInstanceSchema.parse((await call('POST', WHATSAPP_INSTANCES_PATH, ownerB, { displayName: 'Loja B 2' })).json());
+    const [row] = await services.database.db.select().from(whatsappInstances).where(eq(whatsappInstances.id, created.id));
+    sim.instances.delete(row?.providerInstanceId ?? '');
+    sim.failNextDelete = true;
+    expect((await call('DELETE', whatsappInstancePath(created.id), ownerB)).statusCode).toBe(204);
+    const [after] = await services.database.db.select().from(whatsappInstances).where(eq(whatsappInstances.id, created.id));
+    expect(after?.deletedAt).not.toBeNull();
   });
 });

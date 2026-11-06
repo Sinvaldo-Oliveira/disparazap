@@ -30,7 +30,7 @@ export default defineConfig(() => {
     // Mesma origem para o navegador: o Vite repassa /health e /api para a API local (sem CORS)
     server: {
       host: '127.0.0.1',
-      port: 5173,
+      port: 3000,
       strictPort: true,
       proxy: { '/health': apiTarget, '/api': apiTarget },
     },

@@ -97,6 +97,8 @@ export const organizations = identity.table(
     origin: text('origin').notNull().default('direct'),
     // Limite de instâncias de WhatsApp (decisão W1: 1 por padrão; o Super-Admin poderá ajustar)
     maxWhatsappInstances: integer('max_whatsapp_instances').notNull().default(1),
+    // Fuso horário da empresa (IANA): agenda e calendário das Redes Sociais (PLANO_MODULO_REDES_SOCIAIS, decisão R3)
+    timezone: text('timezone').notNull().default('America/Sao_Paulo'),
   },
   (table) => [
     uniqueIndex('organizations_slug_unique').on(table.slug),

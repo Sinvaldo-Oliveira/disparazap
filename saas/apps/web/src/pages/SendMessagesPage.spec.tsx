@@ -129,7 +129,7 @@ describe('Envio de Mensagens', () => {
 
   it('etapa 1: sem instância, aponta para a página WhatsApp', async () => {
     await open({ whatsapp: whatsappFake([]) });
-    expect((await screen.findByRole('link', { name: /Crie e conecte uma na página WhatsApp/ })).getAttribute('href')).toBe('/whatsapp');
+    expect((await screen.findByRole('link', { name: /Crie e conecte uma em Integrações/ })).getAttribute('href')).toBe('/integracoes#whatsapp');
   });
 
   it('etapa 2: adiciona à mão com a regra de telefone e salva como lista da empresa', async () => {

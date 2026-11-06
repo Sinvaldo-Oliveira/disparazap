@@ -53,8 +53,11 @@ function renderAt(path: string, { authApi = fakeAuth(COMPANY_ADMIN), fetchHealth
 }
 
 const menu = () => within(screen.getByRole('navigation', { name: 'Menu principal' }));
-// Módulos ainda sem implementação (WhatsApp, Envio de Mensagens e Contatos têm páginas próprias, com testes próprios)
-const MODULES = NAVIGATION.filter((item) => item.path !== '/' && item.status === 'in_development');
+// Módulos ainda sem implementação (WhatsApp, Envio de Mensagens, Contatos e Integrações têm páginas próprias, com testes próprios)
+// Módulos parciais continuam "Em desenvolvimento" no menu, mas têm página própria (testada no arquivo do módulo):
+// Automações mostra a consulta das automações de redes (PLANO_MODULO_AUTOMACOES, etapa A1)
+const PARTIAL_MODULES: readonly string[] = ['automations'];
+const MODULES = NAVIGATION.filter((item) => item.path !== '/' && item.status === 'in_development' && !PARTIAL_MODULES.includes(item.id));
 const panelReady = () => screen.findByRole('navigation', { name: 'Menu principal' });
 const loginReady = () => screen.findByRole('heading', { level: 1, name: 'Entre na sua conta' });
 
@@ -218,6 +221,18 @@ describe('usuário conectado', () => {
     expect(screen.getByText(workspace)).toBeTruthy();
   });
 
+  it('se o servidor recusar o logout, a pessoa continua logada e vê o aviso (não finge que saiu)', async () => {
+    const authApi = renderAt('/', { authApi: fakeAuth(COMPANY_ADMIN, { signOut: vi.fn(async () => { throw new Error('Não foi possível sair agora: sua sessão continua ativa. Recarregue a página e tente de novo.'); }) }) });
+    await panelReady();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Sair' }));
+    });
+    expect(authApi.signOut).toHaveBeenCalledTimes(1);
+    expect((await screen.findByRole('alert')).textContent).toContain('sua sessão continua ativa');
+    expect(screen.queryByRole('heading', { level: 1, name: 'Entre na sua conta' })).toBeNull();
+    expect(screen.getByRole('navigation', { name: 'Menu principal' })).toBeTruthy();
+  });
+
   it('sair encerra a sessão e volta para a tela de entrar', async () => {
     const authApi = renderAt('/');
     await panelReady();
@@ -237,9 +252,9 @@ describe('layout do painel', () => {
     expect(screen.getByText('Ambiente de desenvolvimento')).toBeTruthy();
     expect(screen.getByRole('main')).toBeTruthy();
     const labels = menu().getAllByRole('link').map((link) => link.querySelector('.sidebar__label')?.textContent);
-    expect(labels).toEqual(['Visão Geral', 'WhatsApp', 'Campanhas', 'Envio de Mensagens', 'Contatos', 'Agentes de IA', 'Automações', 'Redes Sociais', 'Integrações', 'Configurações']);
-    // WhatsApp, Envio de Mensagens e Contatos já estão disponíveis; os outros 6 seguem em desenvolvimento
-    expect(menu().getAllByText('Em desenvolvimento')).toHaveLength(6);
+    expect(labels).toEqual(['Visão Geral', 'Inbox', 'Campanhas', 'Envio de Mensagens', 'Contatos', 'Agentes de IA', 'Automações', 'Redes Sociais', 'Integrações', 'Configurações']);
+    // Inbox, Envio de Mensagens, Contatos, Redes Sociais e Integrações (com o WhatsApp dentro) já estão disponíveis; os outros 4 seguem em desenvolvimento
+    expect(menu().getAllByText('Em desenvolvimento')).toHaveLength(4);
   });
 });
 
@@ -251,8 +266,8 @@ describe('Visão Geral', () => {
     expect(screen.getByRole('note').textContent).toMatch(/Plataforma em construção/);
     const lista = within(screen.getByRole('heading', { name: 'Módulos planejados' }).closest('section') as HTMLElement);
     expect(lista.getAllByRole('listitem')).toHaveLength(9);
-    expect(lista.getAllByText('Em desenvolvimento')).toHaveLength(6);
-    expect(lista.getAllByText('Disponível')).toHaveLength(3);
+    expect(lista.getAllByText('Em desenvolvimento')).toHaveLength(4);
+    expect(lista.getAllByText('Disponível')).toHaveLength(5);
   });
 
   it('não exibe estatísticas, contas ou campanhas inventadas', async () => {
@@ -319,8 +334,8 @@ describe('navegação', () => {
 
 describe('permissões (estrutura preparada)', () => {
   it('visibleNavigation mostra só os itens permitidos', () => {
-    const visiveis = visibleNavigation(NAVIGATION, (permission) => permission === 'overview:view' || permission === 'whatsapp:view');
-    expect(visiveis.map((item) => item.id)).toEqual(['overview', 'whatsapp']);
+    const visiveis = visibleNavigation(NAVIGATION, (permission) => permission === 'overview:view' || permission === 'integrations:view');
+    expect(visiveis.map((item) => item.id)).toEqual(['overview', 'integrations']);
   });
 
   it('cada item declara uma permissão única', () => {

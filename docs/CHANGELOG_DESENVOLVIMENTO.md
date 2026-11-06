@@ -8,6 +8,1340 @@ Nunca registre senhas, tokens, chaves, URLs privadas de servidores ou dados pess
 
 ---
 
+## 2026-11-05 — Automações, etapa A4: atividade (quem recebeu, quem foi pulado e por quê)
+
+### Adicionado
+- Cliente Zernio: `listCommentAutomationLogs` (GET /v1/comment-automations/{id}/logs, 50 registros por leitura), lendo só o que a tela usa. O texto do comentário e o nome de quem comentou são lidos, mas só saem para dono e administradores.
+- Contrato: `automationActivitySchema`, o caminho `GET /api/internal/automations/comment/:id/activity` e `ACTIVITY_REFRESH_MS` (15 s, decisão A9).
+- Serviço `automationActivity`: cada registro sai com um texto fixo por situação (DM enviada, na fila, aguardando a confirmação de quem segue, falha no envio, não enviada, situação não reconhecida). Para "não enviada", o motivo da Zernio é só classificado (repetição ou intervalo) e o texto não sai da API. Os comentários que não casaram (`misses`) saem só para dono e administradores (A7).
+- Painel: seção "Atividade" no detalhe da automação, atualizada a cada 15 s enquanto a página estiver aberta (`AutomationActivityPanel` em `AutomationsPage.tsx`).
+- Simulador: registros por automação e comentários que não casaram, com paginação e a retenção simulada de 7 dias.
+
+### Documentação verificada
+- `list-comment-automation-logs` lido em 2026-11-05: status `pending`, `sent`, `gated`, `skipped`, `failed`; motivos de "pulado" em texto livre (repeatPolicy, cooldown, dedupeSameTextHours); `misses` na própria resposta de registros, com retenção curta (o número de dias não está na página).
+- Não verificado: limite máximo de `limit`, parâmetros válidos de `status` e limite de leituras do endpoint.
+
+### Testes
+- `automations.spec.ts`: 3 testes novos (33 no total). `AutomationsPage.spec.tsx`: 3 testes novos (27 no total).
+
+### Não alterado
+- Trava desligada; nenhuma chamada real à Zernio feita pelo assistente. A regra de repetição já existia desde a A2 e não mudou.
+
+---
+
+## 2026-11-05 — Automações, etapa A6: comentário → perguntar antes do link (Instagram, criado pausado)
+
+### Adicionado
+- Contrato: `questionFlowInputSchema` (conta, nome, palavras-chave até 5, pergunta até 1000, mensagem do link, texto do botão até 20, link https), caminho `POST /api/internal/automations/flows/question`, e o tipo `kind` (`link`, `question` ou `other`) na lista de fluxos.
+- Cliente Zernio: nó `wait_for_reply` e `sourceHandle` nas arestas (saídas `reply` e `timeout`).
+- Serviço: `createQuestionFlow`, com o grafo comentário (palavras-chave, `contains`, sem post) → pergunta em texto → espera 1440 min → botão com o link → fim; a resposta de qualquer tipo libera o link (sem condição). Mesmas regras de papel, trava, conta do Instagram e nome único do fluxo de link.
+- Painel: `QuestionFlowBuilder.tsx` (rota `nova-pergunta`), modelo "Comentário → perguntar antes" habilitado, seção de links com o texto próprio da pergunta (sem link para copiar nem QR).
+
+### Documentação verificada
+- Guia `manychat-patterns` (exemplo "ask-first") e `workflows.mdx` lidos em 2026-11-05. O exemplo oficial é o desenho usado: pergunta em texto, botão só depois da resposta, porque a resposta privada a quem não segue não aceita botões.
+- Não verificado: campos obrigatórios do gatilho `comment` além de `keywords`/`matchType`; formato de condições (por isso não usamos condição). Se a Zernio recusar a criação, a mensagem é a fixa de recusa, e nada fica criado.
+
+### Testes
+- `automations.spec.ts`: 3 testes novos (30 no total), com API própria. `AutomationsPage.spec.tsx`: 3 testes novos (24 no total). Ajustes: modelos agora todos com ação.
+- Suíte completa: 563 testes passando; typecheck e build sem erro.
+
+### Não alterado
+- Trava desligada; nenhum fluxo real criado; nenhuma chamada real à Zernio feita pelo assistente.
+
+---
+
+## 2026-11-05 — Automações, etapa A5: link → conversa (Instagram, criado pausado, com QR code)
+
+### Adicionado
+- Cliente Zernio: `listWorkflows` (GET /v1/workflows), `createWorkflow` (POST), `setWorkflowActive` (POST /activate ou /pause) e `deleteWorkflow` (DELETE), com leitura tolerante do fluxo; o código do link fica na descrição do fluxo (a lista não traz o gatilho).
+- Contrato: `flowInputSchema` (conta, nome, código do link em minúsculas, mensagem até 1000, etiqueta, intervalo de 1 a 720 h), `flowSummarySchema`, `flowsListSchema` e os caminhos `/api/internal/automations/flows`.
+- API: `GET /flows`, `POST /flows` (201, sempre rascunho), `POST /flows/:id/state` e `DELETE /flows/:id`, com a mesma trava (`AUTOMATIONS_WRITE_ENABLED`), papéis e escopo por conta do perfil; o link sai como `https://ig.me/m/<usuário>?ref=<código>`.
+- Grafo criado: gatilho `referral` (ref exato, intervalo), mensagem de texto, etiqueta e fim. Nome único e código único por conta, conferidos antes de chamar a Zernio.
+- Simulador: fluxos em memória (criar, listar, ativar, pausar, excluir), com as recusas de conta e de plataforma.
+- Painel: modelo "Link ou QR → conversa" passa a abrir o construtor (`apps/web/src/pages/automations/FlowBuilder.tsx`, rota `nova-fluxo`); a página ganha a seção "Links de conversa" com estado, link, copiar, ativar/pausar (com confirmação) e excluir (com confirmação).
+
+### QR code do link (aprovado pelo dono)
+- Dependência nova no `saas/apps/api`: `qrcode` 1.5.4 e `@types/qrcode` 1.5.6 (dev). O QR é gerado no servidor como PNG em data URL, só com o link público (nada da mensagem, da etiqueta ou da Zernio).
+- `GET /api/internal/automations/flows/:id/qr` (mesmas regras de empresa e conta; fluxo sem código responde 400). Contrato `flowQrSchema`; botão "Ver QR code" na seção de links.
+
+### Não feito nesta etapa
+- Alternativa "envie MENU": depende da opção "também responder por DM" (decisão A4, desligada).
+- Edição de fluxo existente: a tela só cria, ativa, pausa e exclui.
+
+### Documentação verificada
+- `workflows`, `create-workflow`, `list-workflows`, `update-workflow`, `pause-workflow` e `list-workflow-executions` lidas em docs.zernio.com em 2026-11-05. A listagem existe (a skill estava certa; o índice do plano é que estava incompleto).
+- Divergência na documentação: a página de atualização diz que o grafo pode ser editado em qualquer status; a visão geral diz que só em rascunho ou pausado. Não usamos edição de grafo nesta etapa.
+
+### Testes
+- `automations.spec.ts`: 6 testes novos (27 no total), com API própria para o limite de alterações. `AutomationsPage.spec.tsx`: 5 testes novos (21 no total). Ajustes de contagem do A3 (o modelo Link ou QR agora tem ação).
+- Suíte completa: 557 testes passando; typecheck e build sem erro.
+
+### Não alterado
+- Trava desligada; nenhum fluxo real criado; nenhuma chamada real à Zernio feita pelo assistente.
+
+---
+
+## 2026-11-05 — Automações, etapa A3: só seguidores e menção em story (Instagram)
+
+### Adicionado
+- Contrato: `trigger` (`comment` ou `story_mention`, padrão `comment`) e `followGate` na entrada; `followGate` no detalhe; `followGateSent` e `followGatePassed` nas estatísticas; regras novas em `automationInputProblem` (D-67).
+- API: corpo da Zernio para menção em story (sem palavra-chave, sem resposta pública) e para só seguidores (`audience` com `verify`, `followGate`, resposta pública sempre); tirar a verificação numa edição a desliga; gatilho fixo depois de criado; gatilhos criados no painel da Zernio não são editados.
+- Construtor: seletor "O que dispara" (só Instagram), cartão Verificação com textos iniciais, prévia com o botão de confirmação antes da recompensa e "mencionou você num story"; trocar para outra rede volta ao comentário.
+- Página da automação: verificação de seguidor, mensagem para quem não segue e números da verificação; sem Editar para gatilhos de fora.
+- Modelos "Só seguidores" e "Menção em story → DM" passam a abrir o construtor.
+- Simulador: gatilhos de story só no Instagram; verificação recusada nas redes só de resposta pública.
+
+### Testes
+- `automations.spec.ts`: 5 testes novos (21 no total), com API própria para não esbarrar no limite de 30 alterações/min por empresa. `AutomationsPage.spec.tsx`: 4 testes novos (16 no total).
+- Suíte completa: 546 testes passando; typecheck e build sem erro.
+
+### Não alterado
+- Trava desligada; nenhuma automação real criada; nenhuma chamada real feita pelo assistente.
+
+## 2026-11-05 — Automações, etapa A2: Comentário → DM e Comentário → resposta pública
+
+### Adicionado
+- `packages/contracts/src/automations.ts`: entrada para criar e editar (nome, palavras-chave, modo de busca, DM, até 3 botões `https://`, resposta pública, repetição), ativar ou pausar, e `automationInputProblem` com as regras por rede (as mesmas na tela e na API). O detalhe passa a informar a trava e se a pessoa gerencia.
+- `apps/api/src/integrations/zernio-client.ts`: `createCommentAutomation`, `updateCommentAutomation` e `deleteCommentAutomation`, só com os campos documentados.
+- `apps/api/src/automations/automations-service.ts` e `routes/automations.ts`: `POST /comment` (sempre pausada), `PUT /comment/:id`, `POST /comment/:id/state` e `DELETE /comment/:id`. Dono e administradores; trava `AUTOMATIONS_WRITE_ENABLED`; conta do perfil da empresa; nome único por conta (a Zernio não documenta chave de idempotência); erros fixos e resultado incerto com orientação para conferir a lista; 30 alterações/min por empresa; log só com ids (D-66).
+- `apps/web/src/pages/automations/AutomationBuilder.tsx`: construtor com cartões Quando, Então e Com que frequência, prévia de celular com nome de exemplo, contador de caracteres, botões de link e "Salvar pausada" (desligado sem a trava ou para quem não gerencia).
+- `AutomationsPage.tsx`: "Nova automação" e "Usar modelo" para dono e administradores; na automação, Editar, Ativar com confirmação ("são mensagens reais"), Pausar e Excluir com confirmação.
+- Simulador: criar, alterar e excluir com as regras por rede da documentação oficial e modos de recusa, conflito, indisponibilidade e resposta fora do formato.
+
+### Testes
+- `automations.spec.ts`: 9 testes novos (16 no total). `AutomationsPage.spec.tsx`: reescrito, 12 testes.
+- Suíte completa: 537 testes passando; typecheck e build sem erro.
+
+### Não alterado
+- Trava desligada: nenhuma automação foi criada, alterada ou ativada na Zernio. Nenhuma chamada real feita pelo assistente.
+- Escolher uma publicação específica e responder também por DM (`alsoMatchInDms`) ficam fora desta etapa.
+
+## 2026-11-05 — Automações, etapa A1: consulta das automações de redes pela Zernio
+
+### Decisão
+- Plano `saas/docs/PLANO_MODULO_AUTOMACOES.md` aprovado pelo dono do produto, com as recomendações A1 a A9 (D-65).
+
+### Adicionado
+- `packages/contracts/src/automations.ts`: caminhos, limites da documentação, capacidade por rede (Instagram completo; Facebook DM; TikTok, Threads, LinkedIn e YouTube só resposta pública), lista e detalhe.
+- `apps/api/src/integrations/zernio-client.ts`: `listCommentAutomations` e `getCommentAutomation`, com formato tolerante (a documentação não traz a resposta completa).
+- `apps/api/src/automations/automations-service.ts` e `apps/api/src/routes/automations.ts`: `GET /api/internal/automations/overview` e `/comment/:id`. Só automações de contas do perfil da empresa; papéis (dono e administradores gerenciam); erros fixos; log só com ids e contagens.
+- `apps/web/src/pages/automations/AutomationsPage.tsx` e `src/automations/`: seção "Redes sociais" com números, lista ("Quando … → então …"), contas e o que cada rede permite, modelos marcados "Próxima etapa" e página de detalhe.
+- Simulador: automações cruas, vazamento de outro perfil e modos de erro.
+- Trava `AUTOMATIONS_WRITE_ENABLED` (padrão `false`) em `config/env.ts` e `saas/.env.example`.
+
+### Corrigido
+- `saas/.env.example` passa a documentar `INBOX_SOCIAL_SEND_ENABLED` (estava só no código).
+
+### Testes
+- `automations.spec.ts` (7) e `AutomationsPage.spec.tsx` (6). `App.spec.tsx`: Automações sai da lista de módulos sem página (continua "Em desenvolvimento" no menu).
+- Suíte completa: 522 testes passando; typecheck e build sem erro.
+
+### Não alterado
+- Nenhuma chamada real à Zernio e nenhuma automação criada. Criar, editar, ativar e pausar ficam para a A2 em diante.
+- Sem tabela nem migração.
+
+## 2026-11-05 — Plano do módulo Automações (redes sociais pela Zernio)
+
+### Documentação
+- `saas/docs/PLANO_MODULO_AUTOMACOES.md` (novo): plano para um "ManyChat próprio" por empresa na página Automações, com automações de comentário e fluxos da Zernio. Inclui matriz por rede, regras do DisparaZap que prevalecem sobre a skill de terceiros, interface, arquitetura sem migração, etapas A1 a A6, homologação H1 a H3, decisões pendentes A1 a A9 e riscos.
+- Endpoints conferidos na documentação oficial da Zernio em 2026-11-05 (automações de comentário, registros, fluxos, execuções e preços).
+- `CLAUDE.md` (tabela de documentos) e `docs/DISPARAZAP_MASTER.md` (linha do módulo Automações) atualizados.
+
+### Não alterado
+- Nenhum código, nenhuma chamada real à Zernio e nenhuma automação criada. Implementação só depois da aprovação do plano.
+
+## 2026-11-05 — Inbox: lista de conversas do TikTok (somente leitura) e skill para novos canais
+
+### Adicionado
+- Skill `zernio-novo-canal` em `C:\Users\USER\.claude\skills\zernio-novo-canal\SKILL.md`: processo para habilitar um canal pela Zernio (documentação, probe, leitura sem gravação, envio com trava, primeiro envio real com autorização).
+- `saas/docs/REFERENCIA_ZERNIO.md`, seção 12: regras do TikTok (Business, região, só responder, janela de 48 h, texto ou imagem) confirmadas na documentação em 2026-11-05.
+
+### Alterado
+- `apps/api/src/inbox/social-inbox.ts`: a lista de conversas aceita Instagram e TikTok (`LIST_PLATFORMS`). Mensagens, diagnóstico e envio continuam aceitando só o Instagram (`accountOf` com a regra padrão).
+- `apps/web/src/pages/inbox/InboxPage.tsx`: a conta TikTok aparece no filtro e na lista. Ao escolher uma conversa do TikTok, a tela não abre o chat, não mostra o diagnóstico e não tem caixa de resposta.
+
+### Testes
+- `social-inbox.spec.ts`: lista do TikTok funciona; mensagens do TikTok recusadas (400). Mensagem de erro da listagem atualizada.
+- `InboxPage.spec.tsx`: TikTok lista sem abrir o chat nem permitir resposta.
+- Suíte completa: 510 testes passando; typecheck e build sem erro.
+
+### Não alterado
+- Nenhuma chamada real à Zernio foi feita por mim. A primeira leitura real do TikTok acontece quando a conta TikTok é aberta na tela, com a chave da empresa.
+- Envio pelo TikTok continua desligado; exige autorização própria.
+
+## 2026-11-05 — Inbox: layout em altura de tela (computador)
+
+### Corrigido
+- `apps/web/src/layouts/AppLayout.tsx`: na rota `/inbox`, a área da página recebe a classe `layout--fill`.
+- `apps/web/src/styles/global.css`: em telas acima de 960 px, a Inbox ocupa exatamente a altura da janela. O cabeçalho e o aviso ficam no topo, e as três colunas rolam por dentro. Antes, a página inteira rolava e sobrava espaço vazio embaixo quando a altura fixa não batia com o cabeçalho.
+- Tablet e celular mantêm o comportamento anterior.
+
+### Testes
+- Typecheck e build sem erro; 77 testes das telas de layout e da Inbox passando. O ajuste de altura é visual e não tem teste automatizado; conferência no navegador necessária.
+
+## 2026-11-05 — Inbox do Instagram: atualização automática e campo com foco
+
+### Corrigido
+- `apps/web/src/inbox/SocialInbox.tsx`: a conversa aberta é atualizada sozinha a cada 15 segundos (só com a aba visível), sem precisar recarregar a página. As mensagens novas entram embaixo e o histórico já carregado é mantido.
+- A rolagem só acompanha o fim da conversa quando a pessoa está perto do fim; quem lê o histórico antigo não é puxado para baixo.
+- Depois do envio, a conversa é atualizada na hora (sem apagar a lista) e o cursor volta para o campo de resposta, pronto para a próxima mensagem.
+
+### Testes
+- `apps/web/src/inbox/SocialInbox.spec.tsx` (novo, 2): junção das mensagens novas com o histórico e preservação da lista quando não há mudança.
+- A atualização automática e a rolagem não têm teste de tela (o ambiente de testes não calcula layout nem tempo real); conferência visual necessária.
+- Typecheck e build sem erro; 45 testes da Inbox passando.
+
+### Pendências
+- A lista de conversas (coluna da esquerda) ainda não se atualiza sozinha; só a conversa aberta.
+
+## 2026-11-05 — Inbox do Instagram: migração 0008 no banco local e preparação do envio real
+
+### Adicionado
+- `saas/packages/db/migrations/0008_social_sends.sql` e entrada 8 no `_journal.json`: tabela `app.inbox_social_sends` no banco embutido de desenvolvimento. As partes que dependem dos papéis `dz_app` e `dz_migrator` só são aplicadas se esses papéis existirem (o banco local não os cria). Em produção, a tabela já foi criada manualmente em 2026-11-05 com o mesmo desenho; por isso `producao:migrar` não deve rodar esta migração sem antes marcá-la como aplicada.
+
+### Testes
+- `packages/db/src/db.spec.ts`: lista de tabelas inclui `app.inbox_social_sends`.
+- `apps/api/src/inbox/social-send.spec.ts`: mesmo ajuste (recria a tabela com o rascunho). Suíte: 507 testes passando, typecheck e build sem erro.
+- `packages/db/src/tenant.spec.ts`: o teste de RLS recria a tabela com o rascunho (que traz os papéis do teste), porque a migração local não cria esses papéis.
+
+### Pendências
+- Envio real: só com `INBOX_SOCIAL_SEND_ENABLED=true` no `saas/.env` (dono edita o arquivo) e uma única ação do dono na conversa confirmada. Nenhum envio real ainda.
+
+## 2026-11-05 — Inbox do Instagram: conversa abre na última mensagem
+
+### Corrigido
+- `apps/web/src/inbox/SocialInbox.tsx`: ao abrir uma conversa, o histórico desce para a última mensagem (embaixo), como num chat. Ao enviar e recarregar, a rolagem também vai para o fim.
+- Ao carregar "Ver mensagens anteriores", a posição de leitura é mantida (as mensagens antigas entram em cima sem o histórico pular).
+
+### Testes
+- Typecheck e build sem erro; 43 testes da Inbox passando. A rolagem não é coberta por teste automatizado (o ambiente de testes não calcula o layout); conferência visual necessária.
+
+## 2026-11-05 — Inbox do Instagram: caixa de resposta no estilo de chat
+
+### Alterado
+- `apps/web/src/inbox/SocialInbox.tsx` e `apps/web/src/styles/global.css`: a caixa de resposta passou a ser uma barra arredondada, com o botão de enviar circular dentro dela, a contagem de caracteres embaixo e a janela de 24 horas acima. Não usa mais a classe `social-composer`, que era da tela de Redes Sociais e causava o layout confuso (campo e botão lado a lado).
+- Botão de envio com o nome acessível "Enviar" e estado "carregando" enquanto o envio acontece.
+
+### Testes
+- Typecheck e build sem erro; 43 testes da Inbox passando.
+
+## 2026-11-05 — Inbox do Instagram: campo de resposta ligado e migração 0008 aplicada em produção
+
+### Aplicado em produção (autorizado pelo dono do produto)
+- Migração `0008_social_sends` aplicada no Supabase via ferramenta de migração: cria `app.inbox_social_sends` (registro local de envios, só metadados), com RLS ligado e forçado, 3 políticas para `dz_app` e sem DELETE para a aplicação.
+- Dono da tabela transferido para `dz_migrator` na mesma execução (padrão das demais tabelas; desvio pequeno em relação ao rascunho, que deixava o dono como `postgres`).
+- Verificado por leitura: dono `dz_migrator`; RLS ativo e forçado; 3 políticas; `postgres` continua com BYPASSRLS (a conexão atual não foi afetada).
+
+### Alterado
+- `apps/web/src/inbox/inbox-api.ts`: novo método `socialSend` (POST `SOCIAL_SEND_PATH`, resposta validada pelo contrato).
+- `apps/web/src/inbox/SocialInbox.tsx`: campo de resposta e botão Enviar ligados. Dono, administrador e atendente podem responder; a janela de 24 horas continua travando o envio. O `requestId` é mantido enquanto o texto não muda, então repetir após falha de rede não gera segunda mensagem. Confirmação e erro aparecem na própria caixa.
+- `apps/web/src/pages/inbox/InboxPage.tsx`: passa a permissão de resposta ao chat.
+
+### Testes
+- `InboxPage.spec.tsx`: envio com confirmação, falha de rede com repetição do mesmo pedido, atendente pode responder, campo com texto ligado e botão só com texto.
+- Typecheck e build sem erro. Suíte completa: 507 testes passando (uma execução teve falha intermitente em `SocialSection.spec.tsx`, que passou sozinha e na segunda execução completa).
+
+### Não alterado
+- `INBOX_SOCIAL_SEND_ENABLED` continua `false`. Nenhuma mensagem real foi enviada ao Instagram. Ligar a flag e o primeiro envio real dependem de autorização específica, com conversa de teste escolhida pelo dono.
+- Recebimento continua sob demanda (sem webhook da Zernio).
+
+## 2026-11-05 — Auditoria do banco de produção e rascunho de RLS por empresa (não aplicado)
+
+### Achados (consulta só de leitura feita pelo dono)
+- 23 tabelas em `identity`, `app` e `platform`, todas com dono `postgres`; RLS ligado e não forçado; nenhuma política.
+- Esquemas `identity`, `app` e `platform` já existiam com dono `postgres`; `audit` e `drizzle` com `dz_migrator`.
+- Papéis `dz_app` e `dz_migrator` criados corretamente (sem superusuário, sem BYPASSRLS).
+- 17 tabelas têm `organization_id` (texto); as outras 6 são globais ou da plataforma.
+
+### Adicionado
+- `saas/docs/MIGRACAO_RLS_EMPRESAS_RASCUNHO.sql`: transfere donos para `dz_migrator`, cria `app.current_org_id()`, políticas `*_tenant` nas 17 tabelas de empresa para `dz_app`, e concessões mínimas. Não usa FORCE RLS; deixa login, sessões e plataforma para etapa própria.
+
+### Testes
+- PGlite em memória, com migrations 0000 a 0007, RLS ligado sem políticas (estado de produção) e o rascunho aplicado: 23 donos `dz_migrator`, 17 políticas, `dz_app` vê só a própria empresa e nada sem contexto.
+
+### Aplicado em produção (2026-11-05, pelo dono do produto, com autorização explícita)
+- Script `MIGRACAO_RLS_EMPRESAS_RASCUNHO.sql` executado no SQL editor (retorno: "Success. No rows returned").
+- Verificado por leitura: 23 tabelas com dono `dz_migrator`; RLS ativo e não forçado; 17 políticas `*_tenant` só para `dz_app`.
+- Advisor de segurança do Supabase: 6 avisos INFO (`rls_enabled_no_policy`) nas tabelas globais (`identity.accounts`, `organizations`, `sessions`, `users`, `verifications`, `platform.provider_servers`). Esperado: são tabelas sem política por desenho, sem acesso para `dz_app` e a serem tratadas na etapa de login (`dz_auth`).
+
+### Pendente
+- Parte da API: `app.org_id` em cada requisição de empresa, antes da troca de conexão para `dz_app`. Sem ela, `dz_app` não enxerga nada.
+- FORCE RLS: só depois da troca de conexão e de testes com `dz_app`.
+
+## 2026-11-04 — Z3.2 (preparação dos papéis): rascunho de SQL para o banco, ainda não executado
+
+### Adicionado
+- `saas/docs/PREPARACAO_PAPEIS_RASCUNHO.sql`: cria os papéis `dz_app` (aplicação) e `dz_migrator` (dono dos esquemas), sem superusuário e sem BYPASSRLS, cria os esquemas `identity`, `app`, `audit`, `drizzle` e `platform` com esse dono e restringe o acesso a PUBLIC, anon, authenticated e service_role. As senhas são placeholders e não ficam no repositório.
+
+### Testes
+- Executado em PGlite em memória, com os papéis anon, authenticated e service_role criados no teste (o Supabase já os fornece): atributos dos papéis conferidos e segunda execução sem erro.
+
+### Não alterado
+- Nenhum banco real foi acessado. A migração 0008 continua sem aplicação e o precheck dela continua exigindo `dz_app`.
+
+## 2026-11-04 — Z3.2: isolamento transacional, migração revisada e cliente de envio com simulador
+
+**Pedido do dono do produto:** auditoria de isolamento, migração 0008 revisada, cliente de envio testado com a Zernio simulada. **Sem envio real, sem migração aplicada, sem leitura real.**
+
+### Auditoria (Fase A)
+- A empresa vem da sessão (`member.organizationId`), validada no servidor. Nenhum `organization_id` do navegador.
+- A conexão de produção usa `pg.Pool` com a URL configurada. **Não verificado no código** qual papel a URL usa: se for superusuário ou com BYPASSRLS, a RLS não protege nada. Exigência: a aplicação conecta como `dz_app`.
+- `app.org_id` é definido por transação com `set_config(..., true)` (`packages/db/src/tenant.ts`): desfaz ao fim da transação, sem vazamento entre requisições. Identificador de empresa fora do formato não executa.
+
+### Migração 0008 (revisada, não aplicada)
+- **Defeito encontrado e corrigido na revisão:** a função `app.current_org_id()` tinha `EXECUTE` revogado de `PUBLIC`, e a política RLS a chama. Sem concessão ao `dz_app`, a leitura falha. Corrigido em `docs/MIGRACAO_0008_SOCIAL_SENDS_RASCUNHO.sql`.
+- Arquivo final: `saas/docs/MIGRACAO_0008_SOCIAL_SENDS_RASCUNHO.sql`.
+
+### Testes de RLS (`packages/db/src/tenant.spec.ts`, 5)
+- Com empresa definida, o papel da aplicação vê só as próprias linhas.
+- Sem empresa, nenhuma linha.
+- Inserção de outra empresa é recusada.
+- O contexto não vaza para a transação seguinte.
+- Identificador fora do formato não executa nada.
+
+### Cliente de envio (Fase B)
+- `sendInboxMessage`: `POST /v1/inbox/conversations/{id}/messages` com `accountId`, `message`, `messageTag`/`messagingType` só para resposta humana fora de 24 h, e `Idempotency-Key` = requestId da intenção.
+- `sendSocialReply`: só origem humana; janela revalidada com histórico lido na hora; registro gravado antes da chamada; sem reenvio automático.
+- Classificação: 4xx definitivos viram `failed`; 409 em processamento, 5xx, tempo esgotado e resposta sem id viram `unknown`.
+- Flag `INBOX_SOCIAL_SEND_ENABLED`, **desligada por padrão**. Enquanto desligada, a rota responde 409.
+- Simulador: modos de resposta 200, 409, 422, 429, 500, 502, sem id, janela (403) e replay de idempotência.
+
+### Testes
+- `social-send.spec.ts`: 21 (janela, tag, bloqueios, idempotência, pedidos simultâneos, registro no banco, erros, privacidade e log).
+- Total: **504 testes**, typecheck e build sem erros.
+- Ajuste de estabilidade: limite de 20 s nos testes do painel (carga da suíte completa).
+
+### Pendências
+- Painel: o campo de resposta **continua desativado**. Não foi ligado ao envio, conforme o pedido de não habilitar chamadas reais.
+- Aplicação de `app.org_id` em todas as rotas de empresa e migração das tabelas 0002 a 0006 para RLS.
+- Timeout real de envio não simulado (só 5xx e 409).
+- Homologação do primeiro envio humano: plano separado, com autorização.
+
+---
+
+## 2026-11-04 — Z3.1: ordenação corrigida, janela de resposta, rascunho da migração 0008
+
+**Pedido do dono do produto:** investigação documental do envio, correção da ordenação, rascunho da migração e regras de janela, tudo com simulador. **Sem envio, sem leitura real, sem migração aplicada.**
+
+### Documentação do envio
+- Página `messages/send-inbox-message.mdx` lida em duas partes, cobrindo o texto inteiro.
+- **Confirmado:** corpo (`accountId`, `message`, `messageTag`, `messagingType`), `Idempotency-Key` com validade de 24 horas (mesma chave e mesmo corpo devolvem a resposta original; corpo diferente dá 422; em processamento dá 409), sucesso com `data.messageId`, erro no formato `error`/`type`/`code`/`platform`/`platformError`.
+- **Não encontrado:** o texto da janela de 24 horas fechada (a Meta rejeita com `platform_error`/`platform_api_error`, sem texto fixo); `new_contact_limit`; corpo do 502. Por isso o cliente de envio **continua bloqueado**.
+
+### Ordenação (aprovada)
+- A tela só usa o histórico como confiável quando a Zernio confirma `sortOrderApplied = desc`. Caso contrário: aviso, "ver anteriores" desativado e janela bloqueada.
+- Testes com a Zernio simulada: H0 (confiável) e H1 (não confiável).
+
+### Janela de resposta e limite (aprovados)
+- `socialReplyWindow` em `packages/contracts`: até 24 h sem tag; 24 h a 7 dias com `HUMAN_AGENT`; mais de 7 dias bloqueado; sem data confiável ou sem histórico confirmado, bloqueado.
+- Estados visuais na conversa e campo de resposta desativado (sem envio), limite de 1.000 caracteres.
+
+### Migração 0008 (rascunho, não aplicada)
+- `saas/docs/MIGRACAO_0008_SOCIAL_SENDS_RASCUNHO.sql`: tabela `app.inbox_social_sends`, RLS habilitada e forçada, três políticas, sem texto de mensagem nem credencial, rollback documentado.
+- Validada num banco de teste em memória: restrições, `requestId` único, limite de texto, estado `sent` exige id do provedor e rollback.
+- **Bloqueio para produção:** a aplicação ainda não define `app.org_id` por requisição. Com RLS forçada, sem isso ela não enxerga dados.
+- **Pendência existente:** as tabelas de empresa das migrações 0002 a 0006 ainda não têm RLS.
+
+### Testes
+- Total: **478 testes**, typecheck e build sem erros.
+
+### Não alterado
+- Nenhum envio, nenhuma leitura real, nenhum webhook, nenhuma migração aplicada, nenhuma alteração de produção.
+
+---
+
+## 2026-11-04 — Z3 (pré-implementação): auditoria da ordem, contrato de envio e plano
+
+**Pedido do dono do produto:** decisões D1 a D5 para a preparação da Z3, sem envio, sem consulta real e sem migração.
+
+### Auditoria da ordem e da paginação (D3)
+- Testes com a Zernio simulada: H0 (a Zernio respeita `desc`) funciona; H1 (a Zernio ignora `desc`) mostra as mensagens mais antigas **sem aviso** e "ver anteriores" pode trazer mais novas no topo.
+- Defeito latente registrado: a tela não verifica `sortOrderApplied`. Correção proposta no plano, ainda não feita.
+- A captura de março continua sem explicação. A Z2.4 não registrou `sortOrderApplied`.
+
+### Contrato de envio (D5)
+- `POST /v1/inbox/conversations/{conversationId}/messages`: campos `accountId`, `message`, `messageTag`, `messagingType` e `Idempotency-Key` (24 horas) confirmados no texto original.
+- Página lida em cerca de 58%. Janela fechada, erros 409, 422, 429 e 502 **não confirmados**. Cliente de envio **bloqueado**.
+
+### Decisões (D1 a D4)
+- D1: janela de 24 horas, `HUMAN_AGENT` até 7 dias só para resposta humana, validação no backend, bloqueio sem data confiável.
+- D2: tabela `app.inbox_social_sends` proposta (sem migração), com estados, idempotência, política de reconciliação e rollback.
+- D4: limite provisório de 1.000 caracteres para texto simples.
+
+### Documentado
+- `saas/docs/PLANO_MODULO_Z3_RESPOSTAS_INSTAGRAM.md`: pendências 1 a 5 para aprovação.
+
+### Testes
+- API: 23 no arquivo da inbox social (2 de auditoria: H0 e H1). Total da suíte: 471 testes, typecheck e build sem erros.
+
+### Não alterado
+- Nenhum envio, nenhuma consulta real, nenhum webhook, nenhuma migração, nenhuma alteração de produção.
+
+---
+
+## 2026-11-04 — Z2.4: evidência da homologação das datas e plano da Z3
+
+**Pedido do dono do produto:** registrar o resultado da homologação das datas (feita pelo administrador na interface) e preparar a Z3 sem implementar envio.
+
+### Evidência registrada
+- Uma conversa, 10 mensagens, lidas pelo administrador. Só datas e campos.
+- `sentAt` e `createdAt` coincidentes **nesta amostra**; diferença de 0 segundo.
+- Última mensagem recebida do contato: 02/11/2026, 09:06:51. Última atividade da conversa: 02/11/2026, 09:06.
+- **Limitação:** a coincidência vale só para essa amostra. A documentação define `sentAt` como horário de envio apenas de mensagens da empresa.
+- **Pendência:** a captura anterior, com mensagens de março como primeiras da página, continua sem explicação. Confirmar antes da Z3 que a Inbox mostra as mensagens mais recentes.
+
+### Pesquisa para a Z3
+- Janela de 24 horas e tag `HUMAN_AGENT` (até 7 dias, só para respostas digitadas por pessoa): verificadas na documentação do Instagram.
+- **Não encontrado:** a página de envio de mensagens (404 no endereço testado, sem entrada no índice nos trechos lidos). Sem ela, não há formato do pedido, erro de janela fechada, resposta de sucesso nem idempotência.
+
+### Documentado
+- `docs/PLANO_MODULO_Z3_RESPOSTAS_INSTAGRAM.md`: arquitetura, regras, testes com a Zernio simulada e cinco pendências para aprovação.
+
+### Não alterado
+- Nenhum código de envio. Nenhuma chamada real. Nenhuma mensagem enviada. Nenhum webhook. Nenhuma alteração de produção.
+
+---
+
+## 2026-11-04 — Z2.4: ferramenta temporária de diagnóstico das datas do Instagram
+
+**Pedido do dono do produto:** homologar `sentAt`, `createdAt` e a ordem das mensagens, com uma única leitura real de até 10 mensagens, escolhida pelo administrador na interface. **Nenhuma leitura real foi feita pela IDE.**
+
+### Adicionado (temporário, para remover depois da homologação)
+- `POST /api/internal/inbox/social/diagnostico-datas`: só dono e administradores; uma conversa; no máximo 10 mensagens. Devolve datas, presença de texto (sim/não, nunca o texto), tipos de anexo e a ordem. Não grava nada.
+- Botão **"Diagnosticar datas"** na lista de conversas do Instagram, visível só para dono e administradores. A leitura começa ao escolher a conversa, sem abrir o histórico (que carregaria 50 mensagens, acima da autorização).
+
+### Testes
+- API: 21 (5 novos: papéis, limite de 10, sem texto na resposta, mensagem só com anexo, isolamento e log).
+- Painel: 38 (2 novos: botão para o dono, sem botão para o atendente, e nenhuma página de mensagens lida).
+- Total: **469 testes**, typecheck e build sem erros.
+
+### Pendências
+- Homologação real: o administrador escolhe uma conversa e clica em "Diagnosticar datas". Depois remover a rota e o botão.
+
+---
+
+## 2026-11-04 — Z2.3: estabilização das conversas do Instagram na Inbox
+
+**Pedido do dono do produto:** corrigir mensagens "sem texto", o layout da coluna de conversas e o subtítulo da Inbox, antes do envio de respostas. **Nenhuma chamada real à Zernio.**
+
+### Causas encontradas
+- **"Mensagem sem texto":** a Zernio devolve `message` vazio em mensagens com anexo, e o DisparaZap descartava o tipo do anexo. A prévia "[Attachment]" vem do próprio texto da Zernio.
+- **Datas:** a documentação não define `createdAt` como horário de envio; o horário de envio é `sentAt`. As datas exibidas vieram de `createdAt`. A origem exata das datas de março não foi confirmada sem uma leitura real.
+- **Layout da coluna:** os itens eram botões com a borda e o fundo padrão do navegador (as bordas escuras), e a largura não tinha `min-width: 0` (a rolagem horizontal).
+
+### Corrigido
+- `zernio-client.ts`: tipo de cada anexo (imagem, vídeo, áudio, arquivo, figurinha, compartilhamento, modelo ou não suportado), e `sentAt`.
+- `social-inbox.ts`: horário de envio (`sentAt` ou `createdAt`) como chave de ordem; a ordem da página deixou de ser assumida.
+- `SocialInbox.tsx`: anexos com rótulo por tipo, sem URL (que expira). Mensagem só com anexo não ganha texto inventado. "Mensagem sem conteúdo de texto" só quando não há nada.
+- `InboxPage.tsx`: subtítulo novo, conforme o pedido.
+- `global.css`: itens da lista sem bordas padrão, seleção clara, sem rolagem horizontal, rodapé de "carregar mais" separado.
+
+### Testes
+- API: 16 (2 novos: tipos de anexo e tipo desconhecido; ordem pelo horário de envio).
+- Painel: 36 (ajustados ao novo formato).
+- Total: **462 testes**, typecheck e build sem erros.
+
+### Limitações
+- Não confirmado: se `createdAt` ou `sentAt` determina a janela das mensagens mais recentes. Isso exige uma leitura real autorizada.
+- Mídia não é exibida (URLs expiram; visualização fica para outra etapa).
+
+---
+
+## 2026-11-04 — Z2.2: correções da Inbox multicanal (canais, filtros, avisos e identificação)
+
+**Pedido do dono do produto:** cinco correções da auditoria Z2.1 e a visão unificada "Todos os canais". Autorizado só para desenvolvimento. **Nenhuma chamada real à Zernio.**
+
+### Corrigido
+- **TikTok e outras redes:** não chamam mais a API de conversas. Mostram "Leitura de conversas de TikTok ainda não habilitada nesta etapa" com o rótulo de conta conectada.
+- **Instagram:** a lista e o histórico vêm da Zernio, como na Z2.
+- **Filtros:** com uma rede escolhida, a busca, o filtro por conta e as abas somem. Em "Todos", o filtro por conta lista também as contas do Instagram.
+- **Aviso do WhatsApp:** só aparece em "Todos" e "WhatsApp".
+- **Identificação:** o cabeçalho diz "Conta conectada" com a rede e o nome. Conversas aparecem como "Conversa com cliente · conta".
+- **Backend:** removido o fallback que trocava o identificador de conta ausente. Conversas que não batem com a conta ou a rede pedida são descartadas.
+
+### Adicionado
+- **"Todos os canais":** reúne as conversas do WhatsApp e as do Instagram, em ordem de atividade. A leitura das contas do Instagram acontece só quando essa visão está aberta.
+
+### Arquivos
+- `apps/api/src/inbox/social-inbox.ts`: validação de conta e rede; sem fallback.
+- `apps/api/src/testing/zernio-simulator.ts`: rede por conversa e modo que devolve conversas de outras contas.
+- `apps/web/src/pages/inbox/InboxPage.tsx`: visão unificada, filtros e avisos.
+- `apps/web/src/inbox/SocialInbox.tsx`: estado de rede sem leitura, rótulo de conta e entrada unificada.
+
+### Testes
+- API: **14** (1 novo: conversa de outra conta ou rede é descartada, sem trocar o identificador).
+- Painel: **36** (6 novos: TikTok sem chamada, filtros, aviso do WhatsApp, visão unificada, filtro por conta e conversa do Instagram).
+- Total: **460 testes**, typecheck e build sem erros.
+
+### Pendências
+- Consulta real à lista do Instagram, uma única vez, com autorização do administrador.
+- Respostas pelo Instagram e webhooks: etapas seguintes.
+
+---
+
+## 2026-11-04 — Z2: conversas do Instagram na Inbox (leitura direta da Zernio)
+
+**Pedido do dono do produto:** mostrar as conversas do Instagram na Inbox existente, só para leitura, sem gravar no banco e sem enviar mensagens.
+
+### Adicionado
+- `packages/contracts/src/inbox.ts`: rotas e formatos das conversas e mensagens de redes (`/social/conversations`, mensagens por conversa, paginação de 50).
+- `apps/api/src/integrations/zernio-client.ts`: `listInboxConversations` e `listInboxMessages`, com os formatos verificados na documentação da Zernio.
+- `apps/api/src/inbox/social-inbox.ts`: leitura com verificação de conta, papel e erros fixos. Nada é gravado.
+- `apps/api/src/routes/inbox.ts`: `GET /social/conversations` e `GET /social/conversations/:id/messages`, para atendentes, dono e administradores.
+- `apps/web/src/inbox/SocialInbox.tsx`: lista, histórico e detalhes nas três colunas existentes, com "somente leitura".
+
+### Alterado
+- `zernio-simulator.ts`: conversas de teste (`inboxThreads`) e leitura de mensagens no formato verificado.
+- `InboxPage.tsx`: ao escolher o ícone do Instagram, a Inbox mostra as conversas da Zernio, no lugar do aviso de "próxima etapa".
+
+### Testes
+- `social-inbox.spec.ts`: 13 (API). `InboxPage.spec.tsx`: 30 (painel, com 3 novos).
+- Total: **453 testes**, typecheck e build sem erros.
+
+### Pendências
+- Leitura real de uma conversa, só com autorização do administrador, depois da confirmação do add-on do inbox.
+- Respostas pelo Instagram (próxima etapa) e webhooks (dependem da publicação com HTTPS).
+
+---
+
+## 2026-11-04 — Z1.1: investigação do diagnóstico inconclusivo do teste de acesso à Inbox
+
+**Pedido do dono do produto:** descobrir por que o teste retornou "Diagnóstico inconclusivo" (12:48, horário de Brasília) e corrigir apenas defeito comprovado. **Nenhuma consulta real foi feita.**
+
+### Diagnóstico
+- **Registro existente:** `zernio.inbox.teste` com `resultado: inconclusive` e `status_servidor: null`. O status só é registrado quando a Zernio responde com erro, então a resposta chegou como **sucesso (2xx)** com um formato que o código não reconheceu.
+- **Causa comprovada no DisparaZap:** o cliente esperava a lista na chave `conversations`. A documentação oficial (messages/list-inbox-conversations) diz que a lista vem em `data`, com `pagination` e `meta`. A suposição veio de mim, e o simulador a reproduzia.
+- **Limitação:** o corpo da resposta real não foi registrado, então a confirmação exata depende de nova consulta, com autorização.
+- **Ressalva da leitura:** a página de documentação tem um resumo gerado por modelo que contradiz o texto literal sobre a listagem. Foi usado o texto literal.
+
+### Corrigido
+- `apps/api/src/integrations/zernio-client.ts`: `inboxProbe` lê a lista em `data` e devolve também só os nomes das chaves de topo.
+- `apps/api/src/zernio/zernio-service.ts` e `routes/zernio.ts`: quando o formato não bate, o log registra `forma` com os nomes das chaves (nunca valores).
+- `apps/api/src/testing/zernio-simulator.ts`: resposta no formato da documentação.
+
+### Testes
+- `zernio.spec.ts`: **31** (1 novo: o log registra só os nomes das chaves).
+- Total: **438** testes, typecheck e build sem erros.
+
+### Pendências
+- Repetir **uma** consulta real pelo botão, com confirmação do administrador. Se ainda der inconclusivo, o log mostrará `forma` e a causa poderá ser confirmada.
+
+---
+
+## 2026-11-04 — Z1: teste de acesso à Inbox da Zernio (sem consulta real)
+
+**Pedido do dono do produto:** botão administrativo para verificar, por leitura, se a Inbox da Zernio está liberada para a empresa. **Nenhuma consulta real foi feita.** Ela só ocorre quando um administrador clicar e confirmar.
+
+### Adicionado
+- `packages/contracts/src/zernio.ts`: rota `POST /integracoes/zernio/inbox-access`, confirmação obrigatória e resultado com 5 situações.
+- `apps/api/src/integrations/zernio-client.ts`: `inboxProbe` (só a contagem de conversas, com 1 de limite).
+- `apps/api/src/zernio/zernio-service.ts`: `testInboxAccess`, que traduz cada erro da Zernio e não altera a integração.
+- `apps/api/src/routes/zernio.ts`: rota só para dono e administradores, com limite de tentativas e log sem segredos.
+- `apps/api/src/testing/zernio-simulator.ts`: `GET /v1/inbox/conversations` com 8 modos de resposta.
+- `apps/web`: botão "Testar acesso à Inbox" na seção Zernio, com confirmação e resultado.
+
+### Testes
+- `zernio.spec.ts`: 30 (12 novos). `IntegrationsPage.spec.tsx`: 24 (4 novos). Total: **437**, com typecheck e build sem erros.
+
+### Pendências
+- Executar a consulta real pelo administrador, depois de confirmar o add-on do inbox na Zernio.
+
+---
+
+## 2026-11-04 — Auditoria da ativação da Inbox multicanal (sem alteração de código)
+
+**Pedido do dono do produto:** auditoria de WhatsApp, Instagram e TikTok na Inbox, sem alterar código, banco ou integrações.
+
+### Documentação
+- **Novo:** `saas/docs/AUDITORIA_ATIVACAO_INBOX_MULTICANAL.md`, com o diagnóstico de cada aviso da tela, os bloqueios da Zernio, o modelo de banco que impede conversas de rede, o plano em 7 etapas e as operações que precisam de autorização.
+
+### Principais achados
+- O aviso do WhatsApp é correto: o recebimento está desligado por configuração (homologação H1 a H7 pendente).
+- O aviso de rede é um texto fixo, mostrado para qualquer conta, inclusive TikTok, sem consultar a capacidade da conta.
+- As tabelas da Inbox estão presas a `whatsapp_instances`: não cabe conversa da Zernio sem mudança de modelo.
+- Não existe cliente de inbox nem recebedor de webhook da Zernio no código.
+- O TikTok só permite responder (até 10 mensagens em 48 h, sem iniciar conversa, texto ou imagem, nunca os dois).
+- O webhook exige endereço público (provavelmente HTTPS; a confirmar) e resposta em 5 s; depende da publicação.
+
+### Verificação
+- Nenhuma chamada real à Zernio ou à Evolution. Nenhuma alteração de código, banco ou variável.
+- A leitura da documentação pública da Zernio foi feita por apoio de leitura; um trecho da página de webhooks veio truncado e está marcado como a confirmar.
+
+### Pendências
+- Confirmar no painel da Zernio se o add-on do inbox está ativo.
+- Autorizar, uma a uma, as operações da seção I do relatório.
+
+---
+
+## 2026-11-04 — Inbox: ícones de canal com as redes ativas na Zernio
+
+**Pedido do dono do produto:** mostrar na Inbox os canais das redes sociais ativas na Zernio, com ícones para trocar de canal.
+
+### Adicionado
+- `apps/web/src/pages/inbox/InboxPage.tsx`: a faixa de canais virou ícones:
+  - "Todos" (texto), WhatsApp (com contador de não lidas) e **um ícone por conta de rede ativa** (estado "ok" na Zernio);
+  - o selo de cada rede é o mesmo de Redes Sociais (`PlatformBadge`, letras e cor, sem logotipo externo);
+  - contas que precisam reconectar ficam de fora.
+- Escolher uma rede mostra o aviso: as conversas chegam numa próxima etapa, depois da homologação com a conta na Zernio.
+  **Nenhuma conversa de rede social é inventada ou carregada.**
+- `App.tsx`: a Inbox recebe a API de redes (`socialApi`).
+- `global.css`: estilo dos ícones (`channel-button`).
+
+### Testes
+- `InboxPage.spec.tsx`: **28** (3 novos): ícones das contas ativas; escolher a rede mostra o aviso e voltar ao WhatsApp traz as
+  conversas; sem a Zernio configurada, só o WhatsApp.
+- Total: **421 testes**, typecheck e build sem erros.
+
+### Pendências
+- Conversas do Instagram e do Facebook (DMs) e comentários continuam nas etapas I5 e I6, com homologação da conta Zernio.
+  O aviso na tela diz isso.
+
+---
+
+## 2026-11-04 — Auditoria da exclusão de instância (erro "não aceitou o pedido")
+
+**Pedido do dono do produto:** auditar e corrigir o erro ao excluir/atualizar a instância ("O servidor de WhatsApp não aceitou o pedido").
+
+### Achados da auditoria
+- O log da API mostrou que a Evolution **respondeu em ~100 ms com erro (502)**. Não foi tempo esgotado nem falta de conexão.
+- O código **descartava o status e a resposta** da Evolution. Por isso não havia como saber a causa.
+- O ID enviado na exclusão é o gravado na criação, conforme a rota pelo ID do Swagger (DECISOES_TECNICAS, W1). Não foi
+  encontrado erro de montagem da rota.
+- A causa exata continua **pendente**: depende do status que a Evolution devolve, e ele agora fica registrado (abaixo).
+
+### Corrigido
+- `apps/api/src/whatsapp/whatsapp-service.ts`:
+  - `deleteInstance` confere a lista do servidor quando a Evolution recusa. Se a instância já não existe lá, a exclusão
+    segue no DisparaZap, sem deixar a empresa presa.
+  - Se ela ainda existe, nada é apagado no DisparaZap e a tela recebe a mensagem específica: "O servidor de WhatsApp não
+    conseguiu excluir a instância agora. Nada foi apagado aqui".
+  - `WhatsAppError` passa a guardar o status da Evolution, só para o log.
+- `apps/api/src/routes/whatsapp.ts`: registra `whatsapp.exclusao.recusada` com o status recebido, e a exclusão feita com o
+  campo `ja_removida_no_servidor`. Não registra chave, URL nem resposta da Evolution.
+
+### Testes
+- `whatsapp.spec.ts`: **24** (3 novos). Cobrem a recusa com a instância ainda no servidor (nada apagado, mensagem sem o texto
+  da Evolution), a nova tentativa que exclui de vez e a recusa com a instância já removida no servidor.
+- `testing/evolution-simulator.ts`: `failNextDelete` (a próxima exclusão responde 500).
+
+### Pendências
+- Com o status registrado, confirmar a causa na Evolution real (resposta 4xx/5xx e mensagem de erro do servidor).
+  Sem autorização, não há chamada à Evolution real daqui.
+
+---
+
+## 2026-11-04 — Inbox, etapa I1: implementação local com WhatsApp (Evolution simulada)
+
+**Pedido do dono do produto:** "Etapa I1: implementação local da Inbox multicanal", só WhatsApp, testada com a Evolution
+simulada, sem tocar no servidor real, sem ativar o recebimento nas instâncias existentes e sem executar P0 a P7.
+
+### Adicionado
+- **Banco** (`packages/db/src/schema/inbox.ts`, migration `0007_inbox`):
+  - contatos, identidades (número e LID), conversas (modo e versão de controle, responsável, não lidas), mensagens;
+  - recibos pendentes, períodos sem recebimento e eventos da conversa;
+  - `whatsapp_instances.inbox_enabled_at`.
+- **Contratos** (`packages/contracts/src/inbox.ts`): caminhos, rotas do painel, modos de controle (humano, IA, automação,
+  aguardando humano, encerrada), situações, filtros, envio e avisos do tempo real.
+- **API:**
+  - `integrations/ws-client.ts`: cliente WebSocket próprio, só leitura, TLS verificado, recusa 401 reconhecida;
+  - `inbox/evolution-events.ts`: consumidor em modo difusão, com:
+    - filtro das instâncias autorizadas antes de gravar e conferência do token com o cofre;
+    - reconexão com espera crescente e períodos sem recebimento;
+    - sem insistir com chave recusada;
+  - `inbox/inbox-ingest.ts`: gravação idempotente, eventos fora de ordem, eco do envio, recibos;
+  - `inbox/inbox-service.ts`: canais, conversas, histórico, lida, envio idempotente que assume o atendimento, ligar/desligar o
+    recebimento, trava das respostas automáticas;
+  - `inbox/inbox-bus.ts`: avisos em memória;
+  - `routes/inbox.ts`: `/api/internal/inbox/*` e o SSE `/stream`.
+- **Variáveis** `INBOX_EVENTS_ENABLED` e `INBOX_ACTIVATION_ENABLED`, **`false` por padrão** (`config/env.ts`,
+  `saas/.env.example`).
+- **Simulador** (`testing/evolution-simulator.ts`): WebSocket `/ws` como o da Evolution 0.6.1 a 0.7.2, com:
+  - só a chave global;
+  - entrega só com WebSocket ligado;
+  - queda, fechamento, ping e troca de chave;
+  - registro do `/instance/connect`.
+- **Painel:**
+  - menu **Inbox** e página `pages/inbox/InboxPage.tsx`, em três colunas: conversas com filtros, conversa com histórico e
+    resposta, detalhes do contato com "Em desenvolvimento" para etiquetas, notas, IA e automações;
+  - no celular, uma coluna por vez pelo endereço;
+  - `inbox/inbox-api.ts` (HTTP e `EventSource`) e `inbox/inbox-ui.tsx`;
+  - botão **"Receber mensagens na Inbox"** em Integrações → WhatsApp, com confirmação, bloqueado até a homologação.
+
+### Alterado
+- `whatsapp-provider.ts`: `configureInboxEvents`. O `startConnection` mantém a configuração de eventos quando a Inbox está
+  ligada: reconectar pelo QR Code desligaria a Inbox sem aviso.
+- `build-app.ts`: registra a Inbox. O consumidor só existe com `INBOX_EVENTS_ENABLED`.
+- `navigation.ts` e `App.tsx`: item e rota `inbox/*`. `IntegrationsPage.tsx` e `WhatsAppPage.tsx`: botão da Inbox por
+  instância.
+- `ContactsPage.spec.tsx`: um teste pesado (120 linhas) ganhou prazo de 20 s. Ele passava sozinho, mas estourava 5 s com a
+  suíte inteira.
+
+### Corrigido
+- **Migration `0007_inbox`:** o `drizzle-kit` gerou as chaves estrangeiras compostas antes dos índices únicos de que dependem,
+  e a migration falhava.
+  - Era uma transação só, então nada ficou pela metade, e o banco local estava íntegro (conferido numa cópia).
+  - A ordem foi corrigida à mão, como na `0004`, testada numa cópia do banco local e aplicada pela API de desenvolvimento.
+- **Envio pela Inbox** voltava marcado como repetido (200) na primeira vez; agora responde 201.
+
+### Segurança
+- A empresa vem sempre da sessão. Conversa de outra empresa ou de outro atendente responde 404, e o visualizador recebe 403.
+- **A chave global só sai na conexão de saída:**
+  - a URL do WebSocket nunca vai para o log;
+  - o token de cada instância só é lido do cofre.
+- **Evento de instância desconhecida** (MVP, outros sistemas) **é descartado antes de gravar ou avisar.**
+- **Texto e número das mensagens não vão para o log.** O SSE só leva ids.
+- O painel nunca fala com a Evolution.
+- Mídia: o base64 do evento é descartado.
+
+### Testes
+- `apps/api/src/inbox/inbox.spec.ts`: **48**.
+- `apps/web/src/pages/inbox/InboxPage.spec.tsx`: **25**.
+- `db.spec.ts` e `App.spec.tsx` atualizados.
+- **Total: 415 testes em 28 arquivos.** Todos passam, assim como `npm run typecheck` e `npm run build`.
+- Nenhum serviço real, nenhuma credencial real, nenhuma mensagem real.
+
+### Documentação
+- `saas/docs/ESTRUTURA_TECNICA.md`: seção 16 e testes.
+- `saas/docs/DECISOES_TECNICAS.md`: D-52 a D-55.
+- `saas/docs/PLANO_MODULO_INBOX.md`: andamento e limitações.
+- `saas/docs/HOMOLOGACAO_I0_EVOLUTION.md`: seção 10, com a homologação H1 a H7 e o que falta para a produção.
+- `docs/DISPARAZAP_MASTER.md`, `CLAUDE.md` e `saas/README.md`.
+
+### Verificação
+- A API de desenvolvimento aplicou a `0007` e segue respondendo.
+- Com as duas chaves em `false`, ela **não abriu conexão com a Evolution real**: nenhum `inbox.recebimento` no log.
+- **Incidente sem dano:** um vigia antigo do `npm run dev:api`, deixado pelo assistente numa tarefa encerrada, continuou vivo.
+  Ele tentou abrir uma segunda API a cada alteração, e a trava da D-51 recusou todas as vezes.
+  - O encerramento desse processo pelo assistente foi bloqueado pela verificação de permissões.
+  - Fica para o dono do produto fechar.
+
+### Pendências
+- Homologação H1 a H7, cada passo com autorização específica.
+- Para a produção: migration `0007` e as duas chaves, só com autorização.
+- Próximas etapas: mídias (I2, depende da N5) e etiquetas, notas e situações (I3).
+
+---
+
+## 2026-11-03 — Inbox, etapa I0: homologação controlada da Evolution Go (sem serviço real)
+
+**Pedido do dono do produto:** validar os requisitos da Inbox no WhatsApp, sem implementar. Decisões N1 a N8 aprovadas:
+- N5 passa a priorizar armazenamento privado de objetos;
+- N6 fica sujeita a validação jurídica.
+
+### Documentação
+- **Novo:** `saas/docs/HOMOLOGACAO_I0_EVOLUTION.md`, com:
+  - as 10 verificações;
+  - compatibilidade do WebSocket e eventos;
+  - reconexão e perda de mensagens;
+  - segurança da chave global e estratégia de conexão;
+  - testes feitos e procedimentos P0 a P7 para autorização;
+  - recomendação para a I1.
+- **Atualizado:** `saas/docs/PLANO_MODULO_INBOX.md`:
+  - situação e decisões aprovadas;
+  - **correções:** mensagens do celular chegam como `Message` com `IsFromMe`, e o `SendMessage` é o eco dos envios pela API;
+  - conexão recomendada em modo difusão, com filtro.
+
+### Principais achados
+- **Versão do servidor:** nunca foi registrada no projeto. Fica pendente (P1, leitura do Swagger com autorização).
+- **WebSocket:** nas 4 versões publicadas (0.6.1 a 0.7.2), o `/ws` aceita **só a chave global**.
+  - Um token errado é **gravado em texto puro no log da Evolution**.
+  - A chave vai na URL, e pode ir para logs de proxy (P0).
+- **`/instance/connect`** numa instância em execução aplica `subscribe` e WebSocket **sem desconectar** (pelo código).
+- **Falha da Evolution no modo por instância:** a remoção da conexão antiga pode apagar a nova, e a conexão fica "muda". O modo
+  difusão não tem a falha.
+- **Ambiente isolado:** não existe. A homologação será por instância de teste com número de teste.
+
+### Testes
+- Prova local (script temporário, fora do projeto, nenhum serviço real): servidor WebSocket mínimo no formato da Evolution e o
+  cliente nativo do Node 24.
+- **7 de 7 verificações OK:** recusa da chave errada, evento lido, queda percebida e reconexão.
+- Sem dependência nova.
+
+### Verificação
+- Nenhum código, banco, instância, configuração da Evolution, variável de ambiente ou mensagem alterado ou enviado.
+
+### Pendências
+- **Autorização dos procedimentos P0 a P7** (P0 e P1 antes de tudo).
+- **Aprovação da I1.**
+
+---
+
+## 2026-11-03 — Auditoria e plano do módulo Inbox (sem código)
+
+**Pedido do dono do produto:** "Etapa 01", auditoria e planejamento da Inbox multicanal em três colunas (WhatsApp, Instagram,
+Facebook e demais canais com suporte comprovado), preparada para Agentes de IA, Automações e vários atendentes.
+
+### Documentação
+- **Novo:** `saas/docs/PLANO_MODULO_INBOX.md`, com:
+  - diagnóstico da arquitetura, das permissões e das integrações;
+  - matriz de compatibilidade dos canais (10 redes);
+  - proposta das três colunas (e do celular);
+  - camada de conversas, fluxos de recebimento e envio, distribuição entre atendentes;
+  - estados de controle para IA e automações;
+  - segurança e LGPD;
+  - etapas I0 a I9, riscos e decisões N1 a N8.
+- **Fontes:**
+  - código-fonte e wiki oficial da Evolution Go (repositório público `evolution-foundation/evolution-go`, 0.7.2), lidos sem
+    tocar no servidor real;
+  - documentação oficial da Zernio (OpenAPI 1.450.2 e páginas de inbox de cada rede), sem chave.
+
+### Principais achados
+- **Recebimento:** o DisparaZap ainda não recebe nada (sem webhooks, fila, tempo real ou tabela de conversas).
+- **Evolution Go:**
+  - entrega eventos por **WebSocket** que parte da API (funciona sem HTTPS), mas **exige a chave global** (a documentação local
+    diz o contrário) e não reenvia;
+  - as instâncias atuais foram conectadas **sem assinatura de eventos**;
+  - não há histórico guardado;
+  - a mídia chega em base64.
+- **Zernio:**
+  - Instagram e Facebook com mensagens diretas completas e **janela de 24 h** (fora dela, só humano com `HUMAN_AGENT` até
+    7 dias);
+  - TikTok só responde, com restrições;
+  - X sem conversas criptografadas e com custo;
+  - LinkedIn, YouTube e Threads só comentários; Google Business só avaliações; Pinterest nada.
+- **Equipe:** papéis atuais cobrem administrador e atendente; **não há supervisor nem convites**. Vários atendentes dependem do
+  módulo de membros.
+
+### Verificação
+- Nenhum código, banco, migration, variável de ambiente ou serviço alterado; nenhuma chamada a servidor real.
+
+### Pendências
+- Aprovação do plano e decisões N1 a N8.
+- Primeira etapa recomendada: **I0** (homologação só de leitura, com autorização), seguida de **I1** (base da Inbox com
+  WhatsApp).
+
+---
+
+## 2026-11-03 — Módulo Redes Sociais (S1 a S5, S7 e biblioteca de imagens) e incidente do banco local
+
+**Pedido do dono do produto:** "pode criar as funcionalidades conforme o seu planejamento" (aprovação do
+`saas/docs/PLANO_MODULO_REDES_SOCIAIS.md`, com as recomendações R1 a R10).
+
+### Adicionado
+- **Página Redes Sociais** (`/redes-sociais`), com as abas:
+  - **Visão Geral:** contas e situação, publicadas, agendadas, com falha e rascunhos; próximas publicações; alertas;
+    desempenho de 30 dias; fuso horário da empresa.
+  - **Criar publicação:**
+    - redes: Instagram (feed, carrossel e Story), Facebook (publicação e Story), LinkedIn, Threads, Pinterest (título, link e
+      pasta), Google Business e X (aviso de custo);
+    - texto por rede, regras de cada rede ao vivo e prévia aproximada;
+    - publicar agora (com confirmação), agendar ou salvar rascunho; editar rascunho e agendada.
+  - **Calendário:** mês, semana e dia no fuso da empresa; filtros; detalhes; reagendar.
+  - **Histórico:** filtros e busca; motivo da falha em português; link do post; tentar de novo; cancelar; remover da rede.
+  - **Biblioteca:** as imagens da empresa (as mesmas do Envio de Mensagens), com busca pelo nome, envio e exclusão.
+  - **Resultados:** 7, 30 ou 90 dias; totais; por rede, com "—" onde a rede não informa; publicações com mais
+    engajamento.
+  - **Interações:** "em desenvolvimento".
+- **API `/api/internal/social/*`:** visão geral, contas, pastas do Pinterest, publicações (criar, ler, editar, reagendar, excluir,
+  tentar de novo, remover da rede), fuso, métricas e biblioteca.
+  - A empresa e o papel vêm da sessão; a origem é verificada; o limite é de 30 alterações/min por empresa.
+- **Adaptador da Zernio:** presign + envio do arquivo (sem a chave), posts com `Idempotency-Key` e resposta 207, listagem
+  incremental (`updatedSince`), métricas e pastas do Pinterest.
+  - O cliente HTTP passou a aceitar `PUT`/`PATCH` e corpo binário e a devolver os cabeçalhos (`Retry-After`).
+- **Banco** (migration `0006_social`, aplicada automaticamente só no banco embutido):
+  - `app.social_posts` (espelho das publicações);
+  - `identity.organizations.timezone` (padrão `America/Sao_Paulo`);
+  - `app.media_files.file_name`;
+  - `app.zernio_connections.posts_synced_at`.
+- **Contratos:** `social.ts` (regras de cada rede, entrada e saída, mensagens fixas por categoria de erro, métricas por rede)
+  e `timezone.ts` (fuso só com `Intl`).
+- **Zernio simulada:** posts, armazenamento, nova tentativa, remoção, listagem, métricas, pastas e falhas por rede ou rota.
+- **Testes:** 24 da API, 7 dos contratos e 13 do painel, mais 1 do banco. **Total: 342 testes em 26 arquivos.**
+
+### Alterado
+- O menu **Redes Sociais** passa a "Disponível".
+- O selo de cada rede virou o componente comum `PlatformBadge` (Integrações e Redes Sociais).
+- `POST /api/internal/media` aceita `?name=` (nome do arquivo para a busca da biblioteca).
+
+### Corrigido / Segurança
+- **Incidente no banco de desenvolvimento** (`saas/.data/pglite`):
+  - **Causa:** duas APIs de desenvolvimento, iniciadas pelo assistente em sessões diferentes, abriram o mesmo banco ao mesmo
+    tempo. A segunda abria o banco antes de falhar na porta. Depois de reinícios automáticos, o banco não abriu mais
+    ("could not locate a valid checkpoint record").
+  - **Recuperação, com autorização do dono do produto:**
+    - cópia de segurança antes de tudo;
+    - `pg_resetwal` do PostgreSQL 18 portátil (pacote oficial, sem instalar nada no Windows), numa cópia;
+    - conferência das contagens: 2 usuários, 2 empresas, 2 instâncias, a integração Zernio, listas e modelos;
+    - `REINDEX` sem erros;
+    - troca da pasta.
+  - **O que ficou guardado:**
+    - a pasta danificada, em `saas/.data/pglite-danificado-2026-11-03` (ignorada pelo git);
+    - a cópia original, na pasta temporária do assistente.
+  - **O que pode ter se perdido:** alterações feitas no painel em 2026-11-03 depois das 10h58.
+  - O pacote baixado foi apagado depois.
+- **Proteção:** o banco embutido agora só abre com a trava `saas/.data/pglite.lock` (PID do processo).
+  - Outra API viva → mensagem "outra API já está usando o banco embutido", sem tocar nele (DECISOES_TECNICAS D-51).
+
+### Verificação
+- `npm test` (342/342), `npm run typecheck` e `npm run build` aprovados.
+- API de desenvolvimento no ar com o banco recuperado e a migration `0006` aplicada.
+- Uma segunda API foi recusada pela trava, como esperado.
+
+### Pendências
+- **Homologação real** pelo dono do produto, com a conta Zernio dele:
+  - primeiro a Visão Geral (só leitura);
+  - depois 1 publicação e 1 agendamento de teste numa rede dele.
+- **Próximas etapas:**
+  - vídeo (S6), conferindo o endereço do armazenamento da Zernio;
+  - webhooks e interações (S8), depois da publicação com HTTPS;
+  - arrastar no calendário.
+- **Commit:** nada foi para o git; só com a aprovação do dono do produto.
+
+---
+
+## 2026-11-03 — Auditoria e plano do módulo Redes Sociais (sem código)
+
+**Pedido do dono do produto:** transformar o item **Redes Sociais** do menu num módulo completo (visão geral, criar publicação,
+calendário editorial, biblioteca de mídia, histórico, resultados e interações), começando só por auditoria e planejamento.
+
+### Documentação
+- **Novo:** `saas/docs/PLANO_MODULO_REDES_SOCIAIS.md`, com:
+  - arquitetura atual, multiempresa e a integração Zernio existente;
+  - matriz das funções da Zernio por rede (9 redes), com endpoints, restrições, fontes e divergências da documentação;
+  - o que reutilizar, adaptar e criar; proposta de interface e arquitetura técnica;
+  - plano em etapas S0 a S8; riscos; decisões R1 a R10.
+- **Fonte:** só documentação pública da Zernio, lida em 2026-11-03 (especificação OpenAPI **1.450.2**, páginas das redes,
+  comparativo, ciclo de vida do post, limites e preços), sem chave e sem chamar a API de nenhuma conta.
+- **Atualizados:**
+  - `saas/docs/REFERENCIA_ZERNIO.md`: conferida na 1.450.2, com ponteiro para a seção B do novo plano;
+  - `saas/docs/PLANO_MODULO_ZERNIO.md`: etapa Z-P aponta para o novo plano;
+  - `docs/DISPARAZAP_MASTER.md`: módulo Redes sociais e pendência Z-P;
+  - `CLAUDE.md`: tabela de documentos.
+
+### Principais achados
+- **Agendamento:** a Zernio agenda de forma nativa, sem fila própria. Ela também publica na hora, guarda rascunhos e edita e
+  cancela agendados. Tentar de novo só refaz as redes que falharam.
+- **Mídia:**
+  - precisa estar em endereço público HTTPS;
+  - a Zernio não tem biblioteca consultável;
+  - a mídia não usada some quando o post é excluído. A biblioteca precisa ser do DisparaZap.
+- **Lacunas no DisparaZap:**
+  - não existe fuso horário por empresa;
+  - não existe forma de uma pessoa atuar em várias empresas (agência);
+  - a política de segurança do painel publicado bloqueia mídia de outros endereços.
+- **Webhooks** só depois da publicação com HTTPS; até lá, sincronização incremental (`updatedSince`).
+
+### Verificação
+- Nenhum código, banco, migration ou serviço alterado. Nenhuma chamada à Zernio com chave.
+
+### Pendências
+- Aprovação do plano e respostas às decisões R1 a R10.
+- Primeira etapa recomendada: **S1**, a Visão Geral só de leitura, sem migration.
+
+---
+
+## 2026-11-03 — Auditoria do login e do logout (porta 3000)
+
+**Relato do dono do produto:** senha recusada no Super-Admin e outros usuários; ao sair, a página fechava mas a sessão continuava ativa.
+
+### Causas encontradas
+- **Origem recusada (configuração):** a API só aceita pedidos vindos do endereço em `AUTH_BASE_URL` (5173). O painel agora roda na 3000, então login e logout voltavam com `Invalid origin` (403) e a senha nem era conferida. O `saas/.env` não tinha sido alterado (última gravação em 01/11).
+- **Logout falso (bug de código):** o painel saía da tela mesmo quando o servidor recusava o logout. A sessão antiga continuava válida no servidor e voltava ao abrir a página.
+
+### Corrigido
+- Sair só limpa a sessão depois da confirmação do servidor. Se o servidor recusar, a pessoa continua logada e vê o aviso no cabeçalho.
+- Teste novo: logout recusado mantém a sessão e mostra o aviso.
+
+### Pendências
+- Ajustar `AUTH_BASE_URL` no `saas/.env` é recomendado para deixar a configuração coerente, mas já não é obrigatório em desenvolvimento.
+- Testar o login com o Super-Admin depois dessa troca. Se a senha for recusada com a origem aceita, a senha cadastrada é diferente da digitada.
+- **Correção aplicada:** fora de produção, a API passa a aceitar o painel de desenvolvimento (`http://127.0.0.1:3000` e `localhost:3000`) mesmo que o `AUTH_BASE_URL` do `.env` aponte para outro endereço. Em produção, nada muda. Sem isso, o logout e o login ficavam recusados até editar o `.env`.
+- Verificações: SaaS 298/298, typecheck e build aprovados.
+
+---
+
+## 2026-11-03 — MVP removido: o sistema passa a ser só o SaaS
+
+**Pedido e confirmação do dono do produto:** o MVP (disparador local na porta 3000) serviu para construir o disparador. Como o
+disparador já está no SaaS, com as funções do MVP e mais, o sistema deve ficar só com o SaaS.
+
+### Removido da raiz
+- `index.html`, `server.js`, `phone.js`, `tests/`, `package.json`, `package-lock.json` e `.env.example` (todos do MVP).
+- `node_modules/` da raiz (dependências só do MVP).
+- **Preservado antes de remover:** cópia em `backup/mvp-removido-2026-11-03/` (ignorada pelo git, conferida byte a byte) e
+  histórico nos commits `908ca2f`, `32e84e8` e `d936402`.
+- **Não tocado:** o `.env` da raiz (local, não versionado; pode ser apagado por você quando quiser) e `doc_evolution_go.md`
+  (referência da API, usada pelo SaaS).
+
+### Alterado
+- `CLAUDE.md`: o projeto passa a ser único. Saíram as seções de stack, variáveis, execução, arquivos, funções, decisões e bugs
+  do MVP. Ficaram o guia de conexão da Evolution Go (passos 1 a 4) e a seção "Ao fazer mudanças", agora só para o SaaS.
+- Regra "MVP e SaaS são separados" substituída por "Projeto único".
+
+### Verificação
+- SaaS: 295/295 testes, typecheck e build aprovados, sem nenhuma dependência de arquivo da raiz (checado antes de remover).
+- O pacote da Hostinger já não tinha o MVP (só `saas/` entra no pacote).
+
+### Pendências
+- **Instâncias criadas pelo MVP:** se alguma ainda estiver em uso, ela precisa ser cadastrada pelo SaaS (decisão W6). Remover o
+  código do MVP não apaga instâncias no servidor Evolution.
+- **Commit:** as remoções ainda não estão em commit; o commit só com a sua aprovação.
+- **Dois comandos no SaaS:** `dev:api` e `dev:web` continuam separados; pode ser unificado depois.
+
+---
+
+## 2026-11-02 — WhatsApp (Evolution Go) passa para a página Integrações
+
+**Pedido do dono do produto:**
+- levar a integração com a Evolution Go, que estava na página WhatsApp, para a página **Integrações**;
+- cards na ordem **WhatsApp, Zernio, API**;
+- a integração da Evolution Go logo **abaixo dos cards**.
+
+### Alterado
+- **Página Integrações, de cima para baixo:**
+  - cards na ordem WhatsApp → Zernio → API e webhooks (MyLinksss), com os links "Ver instâncias" (`#whatsapp`) e
+    "Ver redes sociais" (`#zernio`);
+  - seção **"WhatsApp · Evolution Go"**, com as mesmas instâncias, QR Code, pareamento, desconectar, excluir, a tabela
+    do Super-Admin e as mesmas regras;
+  - depois, a Zernio.
+- **Conta sem empresa (Super-Admin da plataforma):** vê a tabela do WhatsApp de todas as empresas e um aviso de que a Zernio
+  é de cada empresa.
+- **Menu:** o item **"WhatsApp" saiu**.
+  - O endereço antigo `/whatsapp` leva a `/integracoes#whatsapp`, e a tela rola até a seção.
+  - Os links do Envio de Mensagens ("Crie e conecte uma em Integrações") apontam para lá.
+- **Código:**
+  - `WhatsAppPage` virou o componente `WhatsAppIntegration` (mesmo arquivo, que continua exportando `formatPhone`);
+  - o item Integrações do menu descreve as duas conexões.
+
+### Verificações
+- SaaS 295/295 (duas vezes seguidas), typecheck e build ok; MVP 42/42.
+- **Testes atualizados:**
+  - o WhatsApp abre pelo endereço antigo e cai na seção;
+  - a ordem dos cards e das seções;
+  - o menu com 9 itens;
+  - Super-Admin sem empresa.
+- Demonstração com a Zernio simulada: página na ordem pedida, sem erros.
+
+---
+
+## 2026-11-02 — Integrações: redes já conectadas em verde, com "Conectado" e ✓
+
+**Pedido do dono do produto:** para não repetir o erro de conectar a mesma conta duas vezes, os cards das redes já
+conectadas devem ficar em outra cor (verde), com a etiqueta "Conectado" e um ícone ✓.
+
+### Alterado
+- **Card de rede conectada no perfil do DisparaZap:**
+  - verde, com a etiqueta **"✓ Conectado"** e o nome da conta;
+  - o botão vira **"Outra conta"**, com confirmação: "Você já tem … conectado. Para renovar a mesma conta, use Reconectar…".
+- **Card que precisa reconectar:** âmbar, com "Precisa reconectar"; o botão do card já **reconecta** a mesma conta.
+- **Rede conectada em outro perfil da conta Zernio:** o card avisa ("Já conectado na sua conta Zernio em outro perfil
+  ("Default"): conectar aqui conta como mais uma rede") e pede confirmação antes de conectar.
+
+### Verificações
+- 3 testes novos do painel (cores, etiqueta e ícone; confirmação de outra conta; aviso de outro perfil; reconectar pelo
+  card).
+- SaaS 295/295; MVP 42/42.
+
+---
+
+## 2026-11-02 — Zernio: diagnóstico na conta real e total pela lista de contas
+
+**Autorização:** o dono do produto colou no chat uma chave da conta Zernio dele e pediu para o assistente olhar a conta.
+- **Uso:** só leitura (`/v1/usage`, `/v1/profiles`, `/v1/accounts`). Nada foi alterado na conta.
+- **A chave não foi gravada em nenhum arquivo:** passou só por variável de ambiente, e a busca confirmou que não está em
+  arquivo nenhum.
+- **Ela ficou no histórico do chat:** a recomendação é revogá-la.
+
+### Diagnóstico confirmado
+- **O mesmo Instagram está conectado duas vezes:**
+  - no perfil "Default", pelo início guiado da Zernio;
+  - no perfil "DisparaZap — empresa", pelo painel.
+- **A Zernio conta 2 de 2 redes grátis**, por isso pediu cartão para o TikTok, também no painel dela.
+- Ter 2 chaves de API não consome vaga: a cobrança é por rede conectada.
+
+### Corrigido
+- **O `/v1/usage` respondeu `connectedAccounts: 0` com 2 redes ativas.**
+  - O total da conta passa a vir de `GET /v1/accounts?status=connected`, sem perfil, que respondeu 2.
+  - A resposta da API agora traz `outsideAccounts`: rede, @ e nome do perfil das redes fora do perfil do DisparaZap.
+  - O aviso amarelo do painel lista essas redes, ex.: "Instagram @… — perfil "Default"".
+  - A Zernio simulada passou a responder 0 no `/v1/usage`, como a real.
+
+### Verificações
+- SaaS 292/292 (duas vezes seguidas). Typecheck e build ok.
+- MVP 42/42.
+- A consulta nova, conferida só com leitura na conta real, respondeu 2.
+
+### Ação na conta real (pedido explícito do dono do produto)
+- **Cópia desconectada:** o assistente desconectou a cópia do Instagram no perfil "Default" (`DELETE /v1/accounts/{id}`).
+  - Antes, o script conferiu: o perfil padrão sem `externalId`, exatamente 1 cópia nele e a conexão do perfil do DisparaZap
+    presente.
+  - Resultado: a conta Zernio ficou com **1 rede conectada**, o Instagram no perfil "DisparaZap — (empresa do dono do produto)".
+
+### Pendências
+- **Dono do produto:**
+  - conectar o TikTok pelo DisparaZap;
+  - revogar a "Chave padrão" que foi colada no chat. O DisparaZap usa a outra chave.
+
+---
+
+## 2026-11-02 — Zernio: total de redes da conta inteira na tela; testes do painel estáveis
+
+**Relato do dono do produto:** no painel da Zernio aparece só o Instagram dele. Mesmo assim, o painel da própria Zernio pediu
+cartão para conectar o TikTok.
+
+### Diagnóstico
+- **O log da API registrou a recusa:** `motivo: free_tier_exceeded · limite: 2 · contas: 2`. A Zernio conta **2 redes** na
+  conta dele.
+- **O DisparaZap cria um perfil próprio** na conta Zernio da empresa ("DisparaZap — empresa", decisão Z4). O painel da Zernio
+  mostra um perfil por vez.
+- **Explicação mais provável:** o Instagram está conectado **duas vezes**. Uma vez no início guiado da Zernio, no perfil
+  padrão, e outra pelo DisparaZap, no perfil do DisparaZap. Cada conexão conta.
+- **Ainda falta o dono do produto confirmar.**
+
+### Adicionado
+- **Total da conta inteira:**
+  - a lista de redes conectadas traz `teamAccountCount`, o total da conta Zernio em todos os perfis, lido em `GET /v1/usage`
+    (o mesmo número que a Zernio usa na cobrança);
+  - o painel mostra "Na sua conta Zernio inteira (todos os perfis): N redes conectadas. As 2 primeiras são grátis…";
+  - quando há rede fora do perfil do DisparaZap, aparece um aviso em amarelo com a orientação de desconectar a cópia;
+  - se a Zernio não informar o total, a lista sai mesmo assim.
+- **Mensagens e log:** a mensagem de `free_tier_exceeded` explica que a mesma rede em dois perfis conta duas vezes, e o log da
+  recusa passa a dizer a rede que se tentava conectar.
+
+### Corrigido
+- **Testes do painel instáveis na suíte inteira:** quando rodavam junto com os da API, a espera padrão de 1 s às vezes acabava
+  antes da tela (um teste diferente falhava a cada vez). Agora há `apps/web/vitest.setup.ts` com espera de 5 s. A suíte
+  inteira passou 3 vezes seguidas.
+
+### Verificações
+- SaaS 292/292 (3 vezes seguidas). Typecheck e build ok.
+- MVP 42/42.
+- O pacote da Hostinger foi gerado de novo.
+
+---
+
+## 2026-11-02 — Zernio: mensagem certa para cada pedido de pagamento (402)
+
+**Relato do dono do produto:** no teste real (Z2), o Instagram dele conectou. Ao conectar outra rede, o painel mostrou a
+mensagem geral "A Zernio pediu pagamento ou cartão…", embora o plano grátis permita 2 redes.
+
+### Causa (documentação oficial, especificação 1.444.0, resposta `PaymentRequired`)
+- **A Zernio responde 402 por 4 motivos (`reason`):**
+  - `free_tier_exceeded`: a **conta Zernio inteira** já tem as 2 redes grátis. A contagem inclui redes conectadas direto no
+    painel da Zernio e em outros perfis.
+  - `twitter_passthrough`: **o X exige cartão desde a primeira conta.**
+  - `card_verification_required`: o cartão cadastrado precisa de verificação.
+  - `enterprise_required`: o contrato empresarial atingiu o limite.
+- **A resposta traz também os números:** `free_tier_account_limit` e `current_account_count`.
+- **O DisparaZap descartava tudo isso** e mostrava a mesma mensagem para os quatro casos.
+
+### Corrigido
+- **Adaptador:** guarda o `reason` da Zernio (só códigos curtos), além dos `details`.
+- **API:**
+  - responde **402 "Pagamento necessário"**, com uma mensagem própria para cada motivo e os números da Zernio (ex.: "permite 2
+    redes conectadas na conta Zernio inteira, e a sua já tem 2");
+  - o motivo vai para o log do servidor (`zernio.recusa`: tipo, status, código, motivo, limite e contas), sem chave nem dado
+    pessoal.
+- **Painel:** nesses avisos aparece o link **"Abrir a cobrança na Zernio"**, que abre a página oficial em outra aba. O endereço
+  é fixo no código (`ZERNIO_BILLING_URL`); nenhum endereço que veio da Zernio é usado.
+- **Zernio simulada:** regras de cobrança ligáveis nos testes (X sem cartão; mais de 2 redes sem cartão).
+
+### Verificações
+- SaaS 290/290 (novos: 1 da API com os quatro motivos e o log; o teste do painel confere o link). Typecheck e build ok.
+- MVP 42/42.
+- A API de desenvolvimento do dono do produto reiniciou com a correção.
+
+### Pendências
+- **Z2:** com a correção, o painel diz qual motivo a Zernio deu. Se for `free_tier_exceeded`, confira no painel da Zernio
+  quantas redes a conta tem (todas contam).
+
+---
+
+## 2026-11-02 — Integração com a Zernio (Z1): página Integrações, conta Zernio por empresa e conexão de redes
+
+**Pedido do dono do produto:** "Pode executar assim", aprovando o [plano](../saas/docs/PLANO_MODULO_ZERNIO.md) com as decisões
+recomendadas Z1 a Z7. Ele também pediu para usar agentes e skills.
+
+### Como foi feito
+- **API, banco, adaptador e simulador:** feitos pelo assistente principal.
+- **Telas do painel:** feitas em paralelo por um agente com o mesmo contexto. Os dois trabalharam em arquivos separados, sobre
+  os contratos escritos antes.
+- **Revisão automática** (skill de revisão de código, nível alto): 10 apontamentos.
+  - 7 corrigidos (abaixo).
+  - 2 eram da documentação, atualizada aqui.
+  - 1 é sugestão de reaproveitar código entre módulos, deixada para depois.
+  - A skill de revisão de segurança não serviu: ela compara commits, e as mudanças ainda não estão em commit.
+
+### Adicionado
+- **Banco (migration `0005_zernio`):** `app.zernio_connections`, uma por empresa.
+  - Guarda o perfil na Zernio, o nome da conta, a situação (ativa ou recusada) e a última verificação.
+  - A chave fica cifrada no cofre (`platform.integration_credentials`, `provider='zernio'`, `kind='api_key'`).
+- **Contratos** (`packages/contracts/src/zernio.ts`): caminhos, as 9 redes da etapa (decisão Z5) com nomes e avisos,
+  situação, contas, conexão e volta.
+- **Adaptador** (`apps/api/src/integrations/zernio-client.ts`):
+  - endereço fixo `https://zernio.com/api/v1`, TLS verificado, sem seguir redirecionamentos, tempo-limite;
+  - erros classificados por status, `type` e `code` em motivos fixos;
+  - leitura tolerante das respostas;
+  - rotas: `/auth/verify`, `/profiles`, `/connect/{platform}`, `/accounts`, `/accounts/health` e
+    `DELETE /accounts/{id}`.
+- **Serviço e rotas** (`apps/api/src/zernio/`, `/api/internal/integrations/zernio`): situação, salvar, trocar e remover a
+  chave, redes conectadas, conectar e reconectar, volta da autorização e desconectar.
+  - A chave é testada na Zernio antes de ser guardada.
+  - O perfil "DisparaZap — empresa" é criado ou reaproveitado pelo `externalId` (decisão Z4).
+  - A volta leva um **comprovante assinado** (subchave do cofre, empresa + usuário + rede + 15 minutos), e as contas são
+    relidas na Zernio.
+  - **Só o dono e os administradores alteram** (decisão Z3).
+  - **Limites por empresa:** chave 10/min; conectar, voltar e desconectar 30/min. O papel é conferido antes: quem não pode
+    alterar não gasta o limite.
+- **Cofre:** `vault.sign()`, HMAC-SHA256 com subchave HKDF por finalidade.
+- **Zernio simulada** (`apps/api/src/testing/zernio-simulator.ts`, fora do build), nos formatos oficiais.
+  - Simula a pessoa autorizando ou cancelando na rede.
+  - Inclui a resposta "vazando" contas de outros perfis.
+- **Painel:**
+  - página **Integrações** com catálogo: Zernio, WhatsApp (atalho) e API/MyLinksss "Em desenvolvimento";
+  - cartão da Zernio: passo a passo, chave, resumo, trocar e remover;
+  - grade das redes com avisos, e tabela das redes conectadas com situação, reconectar e desconectar;
+  - página de volta `/integracoes/zernio/retorno`;
+  - o menu Integrações passa a "Disponível".
+
+### Corrigido pela revisão
+- **Situação da chave na tela desatualizada:** ler as redes pode mudar a situação guardada (recusada ↔ ativa). Agora a tela relê
+  a situação depois das redes.
+- **Duas gravações da chave ao mesmo tempo:** dava erro interno. Agora insere, ou trava a linha e troca a chave.
+- **Código de erro com nome especial na volta** (`constructor`, `__proto__`): quebrava a resposta. Agora só valem as chaves
+  do próprio mapa.
+- **Conta sem perfil informado** passava como da empresa. Agora só contam as contas do perfil da empresa, também ao
+  reconectar e desconectar.
+- **Chamada extra à Zernio** nas conferências de conta. Agora só a tela pede a saúde das contas.
+- **Botão Voltar do navegador** depois de "Conectar" deixava os botões travados. Agora são destravados quando a página é
+  restaurada do cache.
+- **`API_TRUST_PROXY` (afeta o pacote da Hostinger):** com `true`, o `X-Forwarded-For` só vale quando quem conecta é um
+  endereço interno (loopback ou rede privada).
+  - Também aceita a lista exata de IPs/CIDRs do proxy.
+  - Antes, quem chegasse direto na porta podia escolher o próprio IP e escapar dos limites de login e cadastro.
+- **Chave guardada que não abre mais** (chave-mestra trocada): virou uma mensagem pedindo para cadastrar de novo, em vez de
+  erro interno.
+
+### Verificações
+- **SaaS: 289/289 testes (23 arquivos).** Typecheck, build e `db:check` aprovados.
+- **MVP: 42/42.**
+- **Demonstração ponta a ponta** (API real com a Zernio simulada, banco temporário, dados fictícios):
+  - chave salva e ausente da página;
+  - Instagram e LinkedIn conectados pela volta;
+  - Facebook com "não administra nenhuma Página";
+  - LinkedIn "Precisa reconectar";
+  - celular de 390 px sem rolagem lateral;
+  - nenhum erro de JavaScript.
+- **Servidores de desenvolvimento do dono do produto:** a API reiniciou sozinha e criou a tabela nova no banco local.
+
+### Pendências
+- **Z2, homologação real com a conta Zernio do dono do produto** (autorizada).
+  - Com o servidor de desenvolvimento, a volta é para `http://127.0.0.1:5173`, então funciona nesta máquina.
+  - Gere de novo o pacote da Hostinger antes de publicar (`npm run pacote:hostinger`).
+- **Publicar e agendar** (Z-P) e webhooks da Zernio (precisam de endereço público).
+- **Reaproveitar o tratamento de erros das rotas** entre módulos (sugestão da revisão).
+
+---
+
+## 2026-11-02 — Integração com a Zernio: documentação oficial e plano (sem código)
+
+**Pedido do dono do produto:**
+- criar o sistema de **Integrações** com a Zernio (<https://zernio.com/>);
+- cada conta (empresa) configura **a própria conta e a chave de API da Zernio** e conecta as redes sociais que quiser.
+
+### Pesquisa (só leitura da documentação oficial; sem cadastro, sem chave, sem chamada autenticada)
+- Dois agentes leram, em paralelo, o site, a documentação e a especificação OpenAPI 3.1 (versão 1.444.0) da Zernio.
+- **O que ela é:** API de redes sociais (publicar, agendar, analisar, inbox, webhooks).
+- **Modelo multiempresa:** um perfil por cliente, com `externalId`.
+- **Conexão das redes:** link de autorização com volta para o painel; não é preciso criar aplicativos na Meta ou no TikTok.
+- **Cobrança:** por conta de rede conectada; as 2 primeiras são grátis.
+- **Webhooks:** HMAC-SHA256 do corpo bruto.
+
+### Documentação
+- **`saas/docs/REFERENCIA_ZERNIO.md` (novo):** resumo da documentação oficial, com links, nas partes que o DisparaZap
+  usa.
+  - Atende à regra de ter a documentação da Zernio no repositório antes de planejar (AUDITORIA_INICIAL, ARQUITETURA
+    §5.4).
+  - Registra as divergências entre o guia e a especificação.
+- **`saas/docs/PLANO_MODULO_ZERNIO.md` (novo), aguardando aprovação:**
+  - **Telas:** página Integrações com catálogo; cartão da Zernio com a chave e a conexão das redes; volta da
+    autorização.
+  - **Segurança:** chave no cofre; endereço fixo da Zernio; comprovante assinado na volta; erros como motivos fixos.
+  - **Dados:** migration `0005_zernio`, com uma ligação por empresa e as contas lidas na hora.
+  - **Técnica:** adaptador próprio em vez do SDK; simulador e testes.
+  - **Etapas:** Z0 a Z3, e publicação (Z-P) depois.
+  - **Decisões:** Z1 a Z7, com recomendações.
+- **DISPARAZAP_MASTER:** a Zernio sai de "fora do primeiro MVP SaaS" (decisão de 2026-10-31) a pedido do dono do
+  produto, no modelo de conta própria por empresa.
+- **ARQUITETURA_SAAS §5.4:** aponta para a referência e o plano.
+
+### Pendências
+- **Aprovação do plano e das decisões Z2 a Z7** antes de qualquer código.
+- Homologação com a conta Zernio do dono do produto (Z2), só depois da Z1.
+
+---
+
+## 2026-11-01 — Pacote para a Hostinger (aplicativo Node.js do hPanel)
+
+**Pedido do dono do produto:** preparar a "pasta dist" para publicar na Hostinger.
+
+**Escolhas do dono do produto** (perguntadas):
+- **Hostinger:** hospedagem com hPanel e aplicativo Node.js (Business ou Cloud). A VPS fica para depois.
+- **Banco:** Supabase.
+- **Cadastro:** aberto (`AUTH_SIGNUP_ENABLED=true`). O risco ficou registrado no passo a passo.
+
+### Pesquisa (documentação oficial da Hostinger, só leitura)
+- Node.js 18, 20, 22 e 24.
+- A Hostinger recebe um arquivo compactado, roda o `npm install` e inicia um "Entry file".
+- A porta vem em `PORT`.
+- Os arquivos são trocados a cada publicação.
+- Não há terminal para rodar comandos.
+
+### Adicionado
+- **A API pode entregar o painel** (`plugins/web-panel.ts`), ligado só com `WEB_DIST_DIR`:
+  - o painel é lido para a memória na inicialização; cada pedido recebe só um arquivo da lista, por comparação exata do
+    caminho;
+  - rotas do painel (ex.: `/contatos/123`) recebem o `index.html`;
+  - mapas de código-fonte, arquivos ocultos e caminhos de API ficam fora;
+  - política de conteúdo (CSP) no HTML;
+  - cache longo nos arquivos com hash; `no-cache` no `index.html`;
+  - ETag com resposta 304.
+- **`API_TRUST_PROXY`:** atrás do proxy da Hostinger, o IP do visitante vem do `X-Forwarded-For`, confiando só em 1 salto.
+  Sem isso, todos os visitantes teriam o mesmo IP e os limites de login e de cadastro seriam divididos por todos.
+- **HSTS** em produção.
+- **`saas/infra/hostinger/`:**
+  - `server.js`: entrada na Hostinger (porta, painel e certificado do banco com caminho relativo);
+  - `empacotar.mjs` (`npm run pacote:hostinger`): gera `saas/deploy/hostinger/` e `disparazap-hostinger.zip`:
+    - API e pacotes internos compilados, com os imports internos trocados por caminhos relativos (sem workspaces no
+      servidor);
+    - dependências reais nas versões instaladas, com `package-lock.json`;
+    - o painel sem mapas de código-fonte;
+    - o certificado do banco, se estiver em `saas/certs/`;
+    - recusa `.env`, chaves privadas e mapas de código-fonte;
+  - `producao.mjs`:
+    - `npm run producao:segredos`: gera os dois segredos no terminal;
+    - `npm run producao:migrar`: aplica as migrations no Supabase a partir do seu computador. Mostra só o servidor e
+      pede que se digite `APLICAR`;
+    - `npm run producao:admin`: cria o Super-Admin;
+  - `env.hostinger.example`: modelo das variáveis, só com placeholders;
+  - `README.md`: passo a passo; vai no pacote como `LEIA-ME.md`.
+
+### Alterado
+- O painel liga o modo `jitless` do Zod (`apps/web/src/zod-setup.ts`, primeiro import). Sem ele, o teste de `eval` do
+  Zod gerava um aviso de CSP no console. O `zod` passou a ser dependência declarada do painel, na mesma versão.
+- `.gitignore` do SaaS: `deploy/` e `certs/`.
+
+### Verificações
+- **Testes do SaaS: 255/255 (21 arquivos).** Novos: 16 em `web-panel.spec.ts`.
+- Typecheck e build aprovados; MVP 42/42.
+- **Ensaio do pacote nesta máquina,** com banco embutido temporário e dados fictícios:
+  - `npm ci --omit=dev`, como na Hostinger, em 29 s;
+  - sem variáveis, a API recusa subir e lista o que falta;
+  - Super-Admin criado pelo `producao.mjs`;
+  - `/health/ready` ok;
+  - login no painel, Contatos com importação de planilha e Envio de Mensagens funcionando sob a CSP;
+  - mapa de código-fonte e rota de API desconhecida em 404;
+  - console do navegador sem bloqueios (só o 401 esperado da verificação de sessão antes do login).
+
+### Pendências
+- **Conferir no servidor real:**
+  - a publicação na Hostinger e a conexão com o Supabase são feitas pelo dono do produto;
+  - o certificado do Supabase com o Session pooler só é verificado de verdade nessa hora.
+- **Supabase:** papéis separados (`dz_migrator`, `dz_app`) e RLS ainda não aplicados (SUPABASE_CONFIGURACAO).
+- **Worker:** fica fora até existirem filas.
+
+---
+
 ## 2026-11-01 — Publicação no GitHub
 
 **Pedido do dono do produto:** fazer o commit e enviar o projeto para o repositório `Sinvaldo-Oliveira/disparazap` no GitHub.
