@@ -8,6 +8,23 @@ Nunca registre senhas, tokens, chaves, URLs privadas de servidores ou dados pess
 
 ---
 
+## 2026-11-06 — Implantação: Dockerfile para o Easypanel
+
+### Adicionado
+- `saas/Dockerfile`: duas etapas. A primeira instala tudo, compila a API, o painel e os pacotes e remove as dependências de desenvolvimento; a segunda leva só o JavaScript compilado. Roda `apps/api/dist/index.js` na porta 3100, com verificação de saúde em `/health/live`. O painel é servido pela própria API (`WEB_DIST_DIR`).
+- `saas/.dockerignore`: fica fora da imagem `node_modules`, `dist`, `.data`, `certs`, `deploy`, `.env*`, zip, logs e cache do TypeScript.
+- `saas/infra/docker/LEIA-ME.md`: passo a passo no Easypanel (fonte no GitHub, caminho `/saas`, variáveis, certificado do Supabase montado em `/app/certs`, `API_TRUST_PROXY=true`, e a regra de não rodar migrações automaticamente).
+
+### Verificado
+- Os passos de compilação do Dockerfile foram reproduzidos numa cópia limpa (instalar, compilar, remover dependências de desenvolvimento). A API compilada subiu com `/health/live` ok e o painel respondeu HTTP 200 com o título DisparaZap.
+- O Docker não está instalado nesta máquina, então a imagem não foi construída aqui. Isso precisa ser testado no Easypanel.
+- Durante o teste apareceu um problema de cópia: cache do TypeScript (`*.tsbuildinfo`) sem as pastas `dist` faz o compilador pular a geração. O cache é ignorado pelo git e agora também está no `.dockerignore`.
+
+### Não alterado
+- Nenhum deploy foi feito. Nenhum segredo foi criado no repositório. A escuta continua em `127.0.0.1` no código; o contêiner define `API_HOST=0.0.0.0` só dentro da imagem.
+
+---
+
 ## 2026-11-05 — Automações, etapa A4: atividade (quem recebeu, quem foi pulado e por quê)
 
 ### Adicionado

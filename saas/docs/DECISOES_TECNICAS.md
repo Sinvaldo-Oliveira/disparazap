@@ -893,3 +893,9 @@ Plano: `PLANO_MODULO_INBOX.md` (decisões N1 a N8 aprovadas). Base: `HOMOLOGACAO
 - A atividade se atualiza a cada 15 s enquanto a página do detalhe estiver aberta (decisão A9). Com 120 leituras por minuto por empresa, a conta cabe com folga.
 - Regra de repetição: já existe desde a A2 (uma vez por pessoa ou com intervalo). A A4 só mostra o efeito dela nos registros.
 - Não verificado na documentação: o limite máximo de `limit` e os valores aceitos em `status`. A leitura usa 50 registros e não filtra por status.
+
+## D-71 · Imagem Docker para o Easypanel: construção a partir do GitHub, segredos fora da imagem (2026-11-06)
+- O `saas/Dockerfile` constrói dentro da própria imagem (instalação, compilação e remoção das dependências de desenvolvimento), a partir do código do GitHub. Assim, a imagem não depende de pastas geradas localmente (como `deploy/` ou `dist/`), que não vão para o git.
+- Segredos, `.env*`, certificados e o cache do TypeScript ficam de fora (`saas/.dockerignore`). O certificado do Supabase e as variáveis entram no Easypanel, como indicado em `saas/infra/docker/LEIA-ME.md`.
+- O contêiner define `API_HOST=0.0.0.0` apenas dentro da imagem. No código, o padrão continua `127.0.0.1` (D-45 e a regra de escuta local do projeto).
+- Não verificado ainda: a construção real da imagem, porque o Docker não está instalado nesta máquina. Ela deve ser testada no Easypanel antes de publicar.

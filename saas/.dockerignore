@@ -1,0 +1,13 @@
+# Fora da imagem: dependências e saídas locais, segredos, certificados e pacotes gerados
+**/node_modules
+**/dist
+**/.data
+**/certs
+**/deploy
+**/.env
+**/.env.*
+**/*.zip
+**/*.log
+**/*.tsbuildinfo
+**/coverage
+.git
